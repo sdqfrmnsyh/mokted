@@ -99,11 +99,9 @@ from source, or use the local `packaging/aur/mokted` recipe.
 On Arch Linux, install either package built from this repository:
 
 ```bash
-sudo pacman -U dist/all-in-one/arch/mokted-1.0.4-1-x86_64.pkg.tar.zst
 sudo pacman -U mokted-1.0.4-1-x86_64.pkg.tar.zst
 # or the AUR-compatible package:
-sudo pacman -U mokted-1.0.4-1-x86_64.pkg.tar.zst
-sudo pacman -U dist/all-in-one/aur/mokted-1.0.4-1-x86_64.pkg.tar.zst
+sudo pacman -U mokted-1.0.4-1-x86_64-aur.pkg.tar.zst
 ```
 
 The package installs the `mokted` executable, desktop entry, metadata, icons,
