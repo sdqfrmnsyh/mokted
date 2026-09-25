@@ -59,19 +59,57 @@ Everything else works the same as Mokted. See the upstream
 Edit `~/.config/mocktail/config.yaml`:
 
 ```yaml
+version: 1
+
+device: mobile-pixel-7
+
+runtime:
+  headless: false
+
+appearance:
+  theme: dark
+
 graphics:
   backend: direct-vulkan
-  frame_rate_limit: 30      # display on 60 Hz targets, 30 on 2C/2T
-  vsync: off                 # present mode FIFO, no tearing
+  frame_rate_limit: 25
+  vsync: on
+  # ETC2: biarkan auto untuk deteksi GPU (default), atau paksa "native"
+  # kalau deteksi salah dan GPU kamu sebenarnya support ETC2.
+  etc2_emulation: auto
 
 performance:
   multithreaded_rendering: false
   physics_worker_mode: auto
   memory_limit_mb: 2048
+  gamemode: on
+ 
+  
+audio:
+  output_device: default
+  input_device: disabled
+
+integrations:
+  discord_rpc:
+    enabled: false
 
 window:
-  width: 960
-  height: 540
+  width: 720
+  height: 400
+  title: Mokted
+  high_dpi: false
+  
+display:
+  # true: bypass compositor (X11), pakai display mode native (misal 1024x768).
+  # false: borderless fullscreen (default, lebih aman).
+  exclusive_fullscreen: false
+
+network:
+  use_system_proxy: false
+
+updates:
+  automatic: true
+  source: apk-pure
+  launch_after_update: false
 ```
 
 `window` is overridden by the saved window state on first launch. Delete
@@ -96,17 +134,23 @@ from source, or use the local `packaging/aur/mokted` recipe.
 
 ### Install distribution packages
 
-On Arch Linux, install either package built from this repository:
+Each release also carries a DEB, an RPM, and a pacman package, and a pacman package, with a
+`.sha256` beside every file on the
+[releases page](https://github.com/sdqfrmnsyh/mokted/releases/latest):
 
 ```bash
+sudo apt install ./mokted_1.0.4_amd64.deb
+sudo dnf install ./mokted-1.0.4-1.x86_64.rpm
 sudo pacman -U mokted-1.0.4-1-x86_64.pkg.tar.zst
-# or the AUR-compatible package:
 sudo pacman -U mokted-1.0.4-1-x86_64-aur.pkg.tar.zst
 ```
 
-The package installs the `mokted` executable, desktop entry, metadata, icons,
-and runtime libraries. The package is built for Arch Linux and is not a
-portable binary format.
+They install `/usr/bin/mocktail`, so they conflict with upstream's `mocktail`
+package. Mokted is not in any distribution repository or the AUR; the
+recipes under `packaging/aur` are kept for local builds only.
+
+Or build and install from source using the steps under
+[Building](#building).
 
 ### Install AppImage
 
@@ -121,90 +165,13 @@ chmod +x Mokted-x86_64.AppImage
 The AppImage is intended for x86_64 Linux systems. On FreeBSD, run it inside
 the Fedora Linuxulator userspace after applying the Linuxulator patch.
 
-### Arch Linux
-
-```bash
-cd packaging/aur/mokted
-makepkg -si
-```
-
-That recipe uses a local checkout when it can find one, then falls back to the
-tagged GitHub source. To point it at a checkout anywhere, set
-`MOKTED_SOURCE_DIR`:
-
-```bash
-MOKTED_SOURCE_DIR=/path/to/mokted makepkg -si
-```
-
-If the variable is unset, the recipe checks the recipe's parent checkout and
-the current directory before cloning the tagged source and its submodules.
-
 ### Flatpak
 
-Install Flatpak, Flathub, and Flatpak Builder, then run this from the project
-root:
-
 ```bash
-flatpak remote-add --user --if-not-exists flathub \
-  https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50
-./scripts/build_flatpak.sh
+flatpak install --user Mokted-x86_64.flatpak
 ```
 
-The command builds and installs `io.github.sdqfrmnsyh.mokted` for the current
-user. The bundle used by CI can be created with:
-
-```bash
-flatpak-builder --user --install-deps-from=flathub --force-clean \
-  build-flatpak packaging/flatpak/io.github.sdqfrmnsyh.mokted.json
-flatpak build-bundle repo Mokted-x86_64.flatpak \
-  io.github.sdqfrmnsyh.mokted stable
-```
-
-The checkout must include the Git submodules. Run `git submodule update --init
---recursive` once if they are missing.
-
-### Nix
-
-With flakes enabled, build and run the package from the project root:
-
-```bash
-nix build .#default
-./result/bin/mokted
-```
-
-Or use the development shell:
-
-```bash
-nix develop
-```
-
-The flake currently targets `x86_64-linux`.
-
-### FreeBSD Linuxulator
-
-FreeBSD support runs the Linux build inside a Fedora x86_64 Linuxulator
-userspace; it does not produce a native FreeBSD executable. After applying the
-kernel patch described in [the FreeBSD packaging guide](packaging/freebsd/README.md),
-enter the Fedora userspace and install the build dependencies:
-
-```bash
-dnf install -y @development-tools cmake git ninja-build pkgconf lld \
-  SDL3-devel SDL3_ttf-devel curl-devel openssl-devel \
-  nlohmann-json-devel libyaml-devel libpng-devel libelf-devel \
-  minizip-devel capstone-devel gtk4-devel libadwaita-devel \
-  webkitgtk6.0-devel fontconfig-devel libglvnd-devel \
-  libplacebo-devel utf8proc-devel vulkan-headers vulkan-loader-devel zlib-devel
-git clone --recurse-submodules https://github.com/sdqfrmnsyh/mokted.git
-cd mokted
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DMOCKTAIL_BINARY_NAME=mokted -DBUILD_TESTING=OFF
-cmake --build build -j"$(nproc)"
-```
-
-The resulting `build/mokted` runs from the Fedora userspace. For a portable
-artifact, build the AppImage on a supported Linux host and run it inside the
-Linuxulator as described in the FreeBSD guide.
+Updates arrive through flatpak update. Mokted is not on Flathub yet.
 
 ## How it works
 
@@ -340,8 +307,10 @@ Arch packages use the recipes in `packaging/arch/PKGBUILD` and
 `packaging/aur/mokted/PKGBUILD`:
 
 ```bash
-makepkg -Cfsri --noconfirm -p packaging/arch/PKGBUILD
-makepkg -Cfsri --noconfirm -p packaging/aur/mokted/PKGBUILD
+cd packaging/arch/
+makepkg -Cfsri --noconfirm
+cd packaging/aur/mokted/
+makepkg -Cfsri --noconfirm
 ```
 
 Alternatively, run `makepkg` from either recipe directory. The recipes first
@@ -365,7 +334,7 @@ cmake --build build-packages --target package
 Install the Flatpak SDK and builder on Arch Linux:
 
 ```bash
-sudo pacman -S --needed flatpak flatpak-builder
+sudo pacman -S --needed flatpak flatpak-builder git-lfs
 flatpak remote-add --user --if-not-exists flathub \
   https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50
@@ -385,9 +354,9 @@ To create a distributable bundle from the local repository:
 
 ```bash
 flatpak-builder --user --install-deps-from=flathub --force-clean \
-  build-flatpak packaging/flatpak/io.github.sdqfrmnsyh.mokted.json
+  --repo=repo build-flatpak packaging/flatpak/io.github.sdqfrmnsyh.mokted.json
 flatpak build-bundle repo Mokted-x86_64.flatpak \
-  io.github.sdqfrmnsyh.mokted stable
+  io.github.sdqfrmnsyh.mokted main
 ```
 
 ## Building AppImage
@@ -396,18 +365,62 @@ Install the AppImage build tools first. `patchelf` is required by the
 relocation step:
 
 ```bash
-sudo pacman -S --needed appstream appimagetool patchelf
+yay -S --needed appstream appimagetool patchelf android-sdk squashfs-tools
 ```
 
 Then build the standalone glibc AppImage:
 
 ```bash
 MOCKTAIL_BUILD_JOBS="$(nproc)" \
-  ./scripts/build_release.sh --libc glibc --mode standalone --clean
+MOCKTAIL_ANDROID_BUILD_TOOLS_ROOT="/opt/android-sdk/build-tools/37.0.0" \
+  ./scripts/build_release.sh --libc glibc --mode standalone
 ```
 
 The output is written under `dist/` as
 `Mokted-x86_64.AppImage` or a libc/mode-specific AppImage name.
+
+### Nix
+
+With flakes enabled, build and run the package from the project root:
+
+```bash
+nix build .#default
+./result/bin/mokted
+```
+
+Or use the development shell:
+
+```bash
+nix develop
+```
+
+The flake currently targets `x86_64-linux`.
+
+### FreeBSD Linuxulator
+
+FreeBSD support runs the Linux build inside a Fedora x86_64 Linuxulator
+userspace; it does not produce a native FreeBSD executable. After applying the
+kernel patch described in [the FreeBSD packaging guide](packaging/freebsd/README.md),
+enter the Fedora userspace and install the build dependencies:
+
+```bash
+dnf install -y @development-tools cmake git ninja-build pkgconf lld \
+  SDL3-devel SDL3_ttf-devel curl-devel openssl-devel \
+  nlohmann-json-devel libyaml-devel libpng-devel libelf-devel \
+  minizip-devel capstone-devel gtk4-devel libadwaita-devel \
+  webkitgtk6.0-devel fontconfig-devel libglvnd-devel \
+  libplacebo-devel utf8proc-devel vulkan-headers vulkan-loader-devel zlib-devel
+git clone --recurse-submodules https://github.com/sdqfrmnsyh/mokted.git
+cd mokted
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DMOCKTAIL_BINARY_NAME=mokted -DBUILD_TESTING=OFF
+cmake --build build -j"$(nproc)"
+```
+
+The resulting `build/mokted` runs from the Fedora userspace. For a portable
+artifact, build the AppImage on a supported Linux host and run it inside the
+Linuxulator as described in the FreeBSD guide.
+
 
 ## Known limitations
 

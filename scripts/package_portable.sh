@@ -245,6 +245,19 @@ ValidateElfLibc() {
   local path="$1"
   local label="$2"
   local detected interpreter
+
+  # Android/bionic runtime stubs are intentionally interpreter-less
+  # placeholder DSOs produced by the stub_* CMake targets. They are
+  # neither glibc nor musl ELFs, so libc ABI validation does not apply.
+  case "$(basename -- "${path}")" in
+    libc.so|libdl.so|libm.so|libz.so|\
+    libandroid.so|liblog.so|libmediandk.so|\
+    libOpenSLES.so|libOpenMAXAL.so|libEGL.so|\
+    libGLESv2.so|libvulkan.so)
+      return 0
+      ;;
+  esac
+
   detected="$(DetectElfLibc "${path}")"
   interpreter="$(ReadElfInterpreter "${path}")"
   [[ "${detected}" == "${TARGET_LIBC}" ]] ||
