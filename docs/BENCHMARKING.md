@@ -7,22 +7,22 @@ machine.
 
 ## Two layers, two tools
 
-Roblox measures its own work. Nightcap measures the layer between Roblox and
+Roblox measures its own work. Mokted measures the layer between Roblox and
 your driver.
 
 | Layer | What it covers | Tool |
 | --- | --- | --- |
 | Roblox | Scripts, physics, rendering jobs, network | Roblox's stats overlays, Shift+F4 and Shift+F5 in game |
-| Nightcap | Vulkan adapter: present, swapchain and GPU waits, submits, ETC2 texture decode, pipeline and shader creation | `--profile` |
+| Mokted | Vulkan adapter: present, swapchain and GPU waits, submits, ETC2 texture decode, pipeline and shader creation | `--profile` |
 
-A Nightcap change should move the `--profile` numbers. If it only moves the
+A Mokted change should move the `--profile` numbers. If it only moves the
 Roblox overlay numbers, say so in the pull request, since the cause is then
 less direct.
 
 ## Recording a trace
 
 ```sh
-mocktail --profile ~/nightcap-before.json
+mocktail --profile ~/mokted-before.json
 ```
 
 The Vulkan adapter writes a Chrome-format trace to that file, a few times a
@@ -46,27 +46,14 @@ Each slice is named after the call it times, on the thread that made it.
 | `submit` | `vkQueueSubmit`, `vkQueueSubmit2`, `vkQueueSubmit2KHR` | `submits` |
 | `texture` | `etc2 decode`: CPU decode of ETC2 textures. On a device with a timeline semaphore this runs on the decode dispatcher, not the submitting thread | `uploads`, `compressed_bytes`, `decoded_bytes` |
 | `texture` | `etc2 gather`: the part of an asynchronous upload that stays on the submitting thread. Absent when the decode ran inline | `uploads`, `compressed_bytes`, `decoded_bytes`, `ticket` |
-| `texture` | `etc2 staging create`: creating a staging block for ETC2 uploads, when no block has room left | `bytes` |
-| `texture` | `etc2 staging destroy`: destroying empty staging blocks beyond the four kept idle | `buffers` |
-| `texture` | `etc2 release wait`: a command buffer reset waiting for its uploads' decode. Only waits of 0.1 ms or more are recorded | `ticket` |
-| `memory` | `vkAllocateMemory` | `bytes`, `type` (memory type index), `result` |
-| `memory` | `vkFreeMemory`, `vkUnmapMemory`: both include waiting for ETC2 decodes that still read that memory | |
-| `memory` | `vkMapMemory`, `vkCreateImage`, `vkDestroyImage` | |
 | `pipeline` | `vkCreateGraphicsPipelines`, `vkCreateComputePipelines` | `count`, `cache` (1 when a pipeline cache was passed), `result` |
 | `pipeline` | `vkCreateShaderModule` | `bytes`, `result` |
 | `pipeline` | `vkCreatePipelineCache` | `initial_bytes`, `result` |
-| `pump` | `nativeCallMessagesFromMainThread`: the engine's main-thread step, on the host main thread. Only calls of 20 µs or more are recorded; the empty polls between them are not. | `cpu_us`: CPU time the main thread used during the call. Far below the slice's duration means the step spent it waiting |
+| `pump` | `nativeCallMessagesFromMainThread`: the engine's main-thread step, on the host main thread. Only calls of 20 µs or more are recorded; the empty polls between them are not. | |
 
 The `frame interval (ms)` counter is the time between successive adapter
 presents. `vkQueuePresentKHR` time minus `host present` time is the adapter's
 own cost per frame.
-
-Two more counters cover the same interval. `present thread cpu (ms)` is the
-CPU time the thread that presents used in it, and is absent for a frame
-presented from a different thread than the one before. `process cpu (ms)` is
-the CPU time of every thread together, so dividing it by the frame interval
-gives the number of cores busy. A long frame with little present-thread CPU
-was spent waiting.
 
 ## The benchmark runs
 

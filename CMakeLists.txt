@@ -10,7 +10,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(Mocktail
   VERSION 1.0.4
-  DESCRIPTION "Android Roblox compatibility runtime for Linux"
+  DESCRIPTION "Android x86-64 Roblox compatibility runtime for Linux"
   LANGUAGES CXX
 )
 
@@ -78,11 +78,45 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Default to a release build when the caller did not choose one, so a plain
+# `cmake -B build` never silently produces an unoptimized binary.
+# Default to a release build when the caller did not choose one, so a plain
+# `cmake -B build` never silently produces an unoptimized binary.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif()
+
+# Excavator (A4-9125, A6, A8, A9, A10, FX-8800P) = bdver4 in GCC.
+set(MOCKTAIL_HOST_ARCH "bdver4" CACHE STRING
+  "Override -march (default: Excavator)")
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set(MOCKTAIL_HOST_ARCH "znver1" CACHE STRING
+    "Clang has no exact Excavator arch; znver1 is the closest")
+endif()
+
 # libjnivm uses C++ exceptions, so these cannot be directory-wide.
 add_library(mocktail_compile_options INTERFACE)
 target_compile_options(mocktail_compile_options INTERFACE
-  "$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic;-Wno-unused-parameter;-fno-exceptions;-g>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic;-Wno-unused-parameter;-fno-exceptions>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-O3>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-march=${MOCKTAIL_HOST_ARCH}>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-mtune=${MOCKTAIL_HOST_ARCH}>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-fno-plt>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-fno-semantic-interposition>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-fomit-frame-pointer>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-ffunction-sections>"
+  "$<$<COMPILE_LANGUAGE:CXX>:-fdata-sections>"
 )
+target_link_options(mocktail_compile_options INTERFACE
+  "$<$<CONFIG:Release>:-Wl,--gc-sections>"
+  "$<$<CONFIG:Release>:-Wl,-O2>"
+  "$<$<CONFIG:Release>:-Wl,--as-needed>"
+)
+
+option(MOCKTAIL_ENABLE_LTO "Enable link-time optimization" ON)
+if(MOCKTAIL_ENABLE_LTO)
+  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+endif()
 
 function(mocktail_apply_compile_options target_name)
   target_link_libraries(${target_name} PRIVATE mocktail_compile_options)
@@ -627,7 +661,9 @@ target_compile_definitions(mocktail_legacy_runtime PRIVATE
   "MOCKTAIL_DEFAULT_COMPATIBILITY_MANIFEST=\"${MOCKTAIL_DEFAULT_COMPATIBILITY_MANIFEST}\""
 )
 
+set(MOCKTAIL_BINARY_NAME "mokted" CACHE STRING "Installed binary name")
 add_executable(mocktail src/main.cc)
+set_target_properties(mocktail PROPERTIES OUTPUT_NAME "${MOCKTAIL_BINARY_NAME}")
 target_include_directories(mocktail PRIVATE include src)
 mocktail_apply_compile_options(mocktail)
 target_compile_definitions(mocktail PRIVATE
@@ -650,11 +686,6 @@ target_link_options(mocktail PRIVATE
 )
 
 # Native FreeBSD helper for Linuxulator's unsupported DF socket option.
-# The helper is x86-64 assembly; other host architectures have nothing to
-# assemble.
-if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
-  set(MOCKTAIL_BUILD_FREEBSD_SOCKET_HELPER OFF)
-endif()
 option(MOCKTAIL_BUILD_FREEBSD_SOCKET_HELPER
   "Build the native FreeBSD Linuxulator socket helper" ON)
 if(MOCKTAIL_BUILD_FREEBSD_SOCKET_HELPER)
@@ -736,20 +767,20 @@ install(FILES
 # launches from sessions whose PATH lacks the install prefix. Uses the prefix
 # given at install time, not the configure-time one.
 install(CODE "
-  file(READ \"${CMAKE_SOURCE_DIR}/packaging/io.github.CoderDayton.nightcap.desktop\"
+  file(READ \"${CMAKE_SOURCE_DIR}/packaging/io.github.sdqfrmnsyh.mokted.desktop\"
        MOCKTAIL_DESKTOP_ENTRY)
   string(REPLACE \"Exec=env SDL_VIDEODRIVER=wayland,x11 mocktail %u\"
          \"Exec=env SDL_VIDEODRIVER=wayland,x11 \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/mocktail %u\"
          MOCKTAIL_DESKTOP_ENTRY \"\${MOCKTAIL_DESKTOP_ENTRY}\")
-  file(WRITE \"${CMAKE_BINARY_DIR}/io.github.CoderDayton.nightcap.desktop\"
+  file(WRITE \"${CMAKE_BINARY_DIR}/io.github.sdqfrmnsyh.mokted.desktop\"
        \"\${MOCKTAIL_DESKTOP_ENTRY}\")
-  file(INSTALL \"${CMAKE_BINARY_DIR}/io.github.CoderDayton.nightcap.desktop\"
+  file(INSTALL \"${CMAKE_BINARY_DIR}/io.github.sdqfrmnsyh.mokted.desktop\"
        DESTINATION \"\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/applications\")
 ")
-install(FILES packaging/io.github.CoderDayton.nightcap.metainfo.xml
+install(FILES packaging/io.github.sdqfrmnsyh.mokted.metainfo.xml
   DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo"
 )
-install(FILES packaging/io.github.CoderDayton.nightcap.svg
+install(FILES packaging/io.github.sdqfrmnsyh.mokted.svg
   DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
 )
 set(MOCKTAIL_HICOLOR_ICON_SIZES
@@ -758,7 +789,7 @@ set(MOCKTAIL_HICOLOR_ICON_SIZES
 # Generated icons are committed, so ImageMagick is not a build dependency.
 foreach(icon_size IN LISTS MOCKTAIL_HICOLOR_ICON_SIZES)
   install(FILES
-      "packaging/icons/hicolor/${icon_size}x${icon_size}/apps/io.github.CoderDayton.nightcap.png"
+      "packaging/icons/hicolor/${icon_size}x${icon_size}/apps/io.github.sdqfrmnsyh.mokted.png"
     DESTINATION
       "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${icon_size}x${icon_size}/apps"
   )
@@ -791,7 +822,7 @@ install(CODE "
   endif()
 ")
 
-set(MOCKTAIL_PACKAGE_NAMES mocktail mocktail-nightly nightcap nightcap-nightly)
+set(MOCKTAIL_PACKAGE_NAMES mocktail mocktail-nightly mokted mokted-nightly mokted mokted-nightly)
 set(MOCKTAIL_PACKAGE_NAME "mocktail" CACHE STRING
   "Native package name"
 )
@@ -811,12 +842,12 @@ set(CPACK_PACKAGE_NAME "${MOCKTAIL_PACKAGE_NAME}")
 set(CPACK_PACKAGE_VERSION
   "${MOCKTAIL_PACKAGE_VERSION}${MOCKTAIL_PACKAGE_VERSION_SUFFIX}"
 )
-set(CPACK_PACKAGE_VENDOR "Nightcap")
+set(CPACK_PACKAGE_VENDOR "Mokted")
 set(CPACK_PACKAGE_CONTACT "vii <coderdayton14@gmail.com>")
-set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/CoderDayton/nightcap")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/sdqfrmnsyh/mokted")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${PROJECT_DESCRIPTION}")
 set(CPACK_PACKAGE_DESCRIPTION
-  "Runs the Android Roblox client on Linux."
+  "Runs the Android x86-64 Roblox client on Linux."
 )
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")

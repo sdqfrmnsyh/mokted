@@ -4,6 +4,8 @@
 #include <SDL3/SDL_timer.h>
 
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <utility>
 
@@ -41,6 +43,13 @@ Status SdlGamepadManager::Initialize(void* context, EventFn emit) {
   if (initialized_ || emit == nullptr) {
     return Status::Error(StatusCode::kFailedPrecondition,
                          "gamepad owner is already initialized or has no sink");
+  }
+  // Skip SDL gamepad enumeration entirely unless the user opts in. On a
+  // weak CPU the per-frame joystick device polling is measurable even
+  // when no pad is connected. Set MOCKTAIL_GAMEPAD=1 to enable.
+  const char* enable = std::getenv("MOCKTAIL_GAMEPAD");
+  if (enable == nullptr || enable[0] == '\0' || std::strcmp(enable, "0") == 0) {
+    return Status::Ok();
   }
   if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
     return Status::Error(

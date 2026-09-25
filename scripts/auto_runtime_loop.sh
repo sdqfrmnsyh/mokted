@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build"
-BINARY="${BUILD_DIR}/mocktail"
+BINARY="${BUILD_DIR}/mokted"
 LIBROBLOX="${ROBLOX_LIB_PATH:-${ROOT_DIR}/rbx_bin/libroblox.so}"
 LOG_DIR="${ROOT_DIR}/logs/runtime"
 ATTEMPTS="${ATTEMPTS:-50}"

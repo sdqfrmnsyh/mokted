@@ -87,7 +87,7 @@ fi
    "$4" == /usr/lib/mocktail/mocktail_updater &&
    "$5" == /usr/lib/mocktail && "$6" == /usr/share/mocktail &&
    "$7" == /usr/bin/bash ]]
-[[ "${DESKTOP}" == /usr/share/applications/io.github.CoderDayton.nightcap.desktop ]]
+[[ "${DESKTOP}" == /usr/share/applications/io.github.sdqfrmnsyh.mokted.desktop ]]
 [[ "${MAIN_BIN}" == mocktail && "${STRACE_MODE}" == 1 ]]
 [[ "${STRACE_BINARY}" == mocktail && "${STRACE_FLAGS}" == --help ]]
 [[ -z "${NO_STRIP:-}" ]]

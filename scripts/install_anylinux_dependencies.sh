@@ -18,15 +18,12 @@ AnyLinuxDependencyRequireContainer() {
 }
 
 AnyLinuxDependencySnapshot() {
-  local manifest="$1" release="$2" host_arch="${3:-$(uname -m)}"
-  local filename remainder names_json
-  [[ "${host_arch}" == x86_64 || "${host_arch}" == aarch64 ]] ||
-    AnyLinuxDependencyDie 'unsupported AppImage architecture'
+  local manifest="$1" release="$2" filename remainder names_json
   local -a names=()
   local -A seen=()
   while read -r filename remainder || [[ -n "${filename}" ]]; do
     [[ -n "${filename}" && "${filename}" != \#* ]] || continue
-    [[ "${filename}" =~ ^[a-z0-9-]+-mini-${host_arch}\.pkg\.tar\.(zst|xz)$ &&
+    [[ "${filename}" =~ ^[a-z0-9-]+-mini-x86_64\.pkg\.tar\.zst$ &&
        -z "${remainder}" && -z "${seen[${filename}]:-}" ]] ||
       AnyLinuxDependencyDie 'invalid or duplicate dependency manifest entry'
     seen["${filename}"]=1
@@ -111,13 +108,7 @@ AnyLinuxDependenciesMain() (
   AnyLinuxDependencyRequireContainer
   (( $# == 0 )) || AnyLinuxDependencyDie 'no arguments are supported'
   readonly ROOT="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-  local host_arch="$(uname -m)" manifest_name
-  case "${host_arch}" in
-    x86_64) manifest_name=anylinux-dependencies.txt ;;
-    aarch64) manifest_name=anylinux-dependencies-aarch64.txt ;;
-    *) AnyLinuxDependencyDie "unsupported AppImage architecture: ${host_arch}" ;;
-  esac
-  readonly MANIFEST="${ROOT}/packaging/${manifest_name}"
+  readonly MANIFEST="${ROOT}/packaging/anylinux-dependencies.txt"
   readonly DOWNLOADS="$(mktemp -d "${TMPDIR:-/tmp}/mocktail-debloated.XXXXXX")"
   trap 'rm -rf -- "${DOWNLOADS}"' EXIT
   AnyLinuxDownloadDependencies "${MANIFEST}" "${DOWNLOADS}"

@@ -1,14 +1,14 @@
-# Maintainer: vii <coderdayton14@gmail.com>
+# Maintainer: Mokted contributors
 
-pkgname=nightcap
-pkgver=0.3.1
+pkgname=mokted
+pkgver=1.0.4
 pkgrel=1
 pkgdesc='Android x86-64 Roblox compatibility runtime for Linux'
 arch=('x86_64')
-url='https://github.com/CoderDayton/nightcap'
+url='https://github.com/sdqfrmnsyh/mokted'
 license=('Apache-2.0')
-provides=('mocktail')
-conflicts=('mocktail')
+provides=('mocktail' 'mokted')
+conflicts=('mocktail' 'mokted-bin' 'mokted-git')
 depends=(
   'capstone'
   'curl'
@@ -42,26 +42,49 @@ options=('!debug' 'strip')
 source=()
 sha256sums=()
 
-_mocktail_source_dir="${MOCKTAIL_SOURCE_DIR:-${startdir}/../..}"
-
 prepare() {
-  [[ -f "${_mocktail_source_dir}/CMakeLists.txt" ]] ||
-    error 'run makepkg from a complete Mocktail checkout'
+  local candidate source_dir
+  for candidate in \
+    "${MOKTED_SOURCE_DIR:-}" \
+    "${startdir}/../.." \
+    "${PWD}"; do
+    [[ -n "${candidate}" && -f "${candidate}/CMakeLists.txt" ]] || continue
+    source_dir="$(realpath -e -- "${candidate}")"
+    break
+  done
+
+  rm -rf "${srcdir}/mokted"
+  if [[ -n "${source_dir:-}" ]]; then
+    mkdir -p "${srcdir}/mokted"
+    relative_srcdir="$(realpath -m --relative-to="${source_dir}" "${srcdir}")"
+    relative_pkgdir="$(realpath -m --relative-to="${source_dir}" "${pkgdir:-${startdir}/pkg}")"
+    tar -C "${source_dir}" \
+      --exclude="./${relative_srcdir}" \
+      --exclude="./${relative_pkgdir}" \
+      -cf - . | tar -C "${srcdir}/mokted" -xf -
+  else
+    git clone --depth 1 --recurse-submodules \
+      --branch "v${pkgver}" \
+      https://github.com/sdqfrmnsyh/mokted.git \
+      "${srcdir}/mokted"
+  fi
+  git -C "${srcdir}/mokted" submodule update --init --recursive
 }
 
 build() {
-  cmake -S "${_mocktail_source_dir}" -B build -G Ninja \
+  cmake -S "${srcdir}/mokted" -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr \
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DMOCKTAIL_DEFAULT_COMPATIBILITY_MANIFEST=/usr/share/mocktail/metadata/roblox_compatibility.json \
     -DMOCKTAIL_DEFAULT_SIGNING_TRUST_MANIFEST=/usr/share/mocktail/metadata/roblox_signing_certificates.json \
-    -DBUILD_TESTING=OFF
+    -DBUILD_TESTING=OFF \
+    -DMOCKTAIL_BINARY_NAME=mokted
   cmake --build build
 }
 
 package() {
   DESTDIR="${pkgdir}" cmake --install build
-  install -Dm644 "${_mocktail_source_dir}/LICENSE" \
+  install -Dm644 "${srcdir}/mokted/LICENSE" \
     "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

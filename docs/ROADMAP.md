@@ -1,12 +1,12 @@
-# Nightcap roadmap
+# Mokted roadmap
 
-What Nightcap is working toward, in priority order. Items move to
+What Mokted is working toward, in priority order. Items move to
 [Shipped](#shipped) when they land on `main`. Open an issue to propose a
 change to this list.
 
 ## 1. Settings UI
 
-Nightcap is configured by editing `~/.config/mocktail/config.yaml`. Most
+Mokted is configured by editing `~/.config/mocktail/config.yaml`. Most
 people never open it, so they never find the FPS unlock or the vsync switch.
 
 Goal: a small GTK4 settings window, reachable from the app menu and from a
@@ -17,7 +17,7 @@ Goal: a small GTK4 settings window, reachable from the app menu and from a
 - Advanced tab: FFlag overrides with a plain text editor for `fflags.json`.
 - Discord tab: every field in the `discord_rpc` block, so a friend can see
   what you are playing and you can switch it all off in one click.
-- Changes apply on next launch. A restart button restarts Nightcap.
+- Changes apply on next launch. A restart button restarts Mokted.
 
 Done when every option in `config/mocktail.example.yaml` that a player would
 touch can be set without a text editor.
@@ -78,7 +78,7 @@ compiles.
 - The host main thread rests between engine polls instead of spinning, and
   GameMode's core pinning is released, so Roblox's workers spread across
   every core. See [PERFORMANCE.md](PERFORMANCE.md).
-- Own app ID `io.github.CoderDayton.nightcap`, so Nightcap installs next to
+- Own app ID `io.github.sdqfrmnsyh.mokted`, so Mokted installs next to
   upstream.
 - AppImage and signed Flatpak releases on every `v*` tag, with the Flatpak
   repo on GitHub Pages.

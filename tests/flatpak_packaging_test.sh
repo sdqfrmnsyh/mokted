@@ -6,7 +6,7 @@
 set -Eeuo pipefail
 
 readonly ROOT="${1:?source root is required}"
-readonly MANIFEST="${ROOT}/packaging/flatpak/io.github.CoderDayton.nightcap.json"
+readonly MANIFEST="${ROOT}/packaging/flatpak/io.github.sdqfrmnsyh.mokted.json"
 readonly BUILD_HELPER="${ROOT}/scripts/build_flatpak.sh"
 readonly PAGES_HELPER="${ROOT}/scripts/assemble_flatpak_pages.sh"
 readonly GITHUB_CI="${ROOT}/.github/workflows/flatpak.yml"
@@ -26,11 +26,11 @@ import sys
 with open(sys.argv[1], encoding="utf-8") as source:
     manifest = json.load(source)
 
-assert manifest["app-id"] == "io.github.CoderDayton.nightcap"
+assert manifest["app-id"] == "io.github.sdqfrmnsyh.mokted"
 assert manifest["runtime"] == "org.gnome.Platform"
 assert manifest["runtime-version"] == "50"
 assert manifest["sdk"] == "org.gnome.Sdk"
-assert manifest["command"] == "mocktail"
+assert manifest["command"] == "mokted"
 assert "sdk-extensions" not in manifest
 
 finish_args = set(manifest["finish-args"])
@@ -55,7 +55,7 @@ for required in (
     "minizip",
     "capstone",
     "libplacebo",
-    "mocktail",
+    "mokted",
 ):
     assert required in modules
 for forbidden in (
@@ -93,22 +93,26 @@ assert manifest["build-options"]["strip"] is True
 assert manifest["build-options"]["no-debuginfo"] is True
 assert "env" not in manifest["build-options"]
 
-project_sources = modules["mocktail"]["sources"]
+project_sources = modules["mokted"]["sources"]
 assert project_sources == [
-    {"type": "git", "path": "../..", "branch": "main"}
+  {"type": "git", "path": "../..", "branch": "main"}
 ]
-mocktail_options = set(modules["mocktail"]["config-opts"])
-assert "-DBUILD_TESTING=OFF" in mocktail_options
-assert "-DMOCKTAIL_BUILD_FREEBSD_SOCKET_HELPER=OFF" in mocktail_options
-assert "-DCMAKE_INSTALL_LIBDIR=lib" in mocktail_options
+mokted_options = set(modules["mokted"]["config-opts"])
+assert "-DBUILD_TESTING=OFF" in mokted_options
+assert "-DMOCKTAIL_BUILD_FREEBSD_SOCKET_HELPER=OFF" in mokted_options
+assert "-DCMAKE_INSTALL_LIBDIR=lib" in mokted_options
 assert (
     "-DMOCKTAIL_DEFAULT_COMPATIBILITY_MANIFEST="
     "/app/share/mocktail/metadata/roblox_compatibility.json"
-) in mocktail_options
+) in mokted_options
+assert modules["mokted"]["post-install"] == [
+  "mv /app/bin/mocktail /app/bin/mokted",
+  "mv /app/lib/mocktail/mocktail /app/lib/mocktail/mokted"
+]
 assert (
     "-DMOCKTAIL_DEFAULT_SIGNING_TRUST_MANIFEST="
     "/app/share/mocktail/metadata/roblox_signing_certificates.json"
-) in mocktail_options
+) in mokted_options
 
 for module in manifest["modules"]:
     for source in module.get("sources", []):
@@ -150,7 +154,7 @@ grep -Fq -- '--install-deps-from=flathub' "${GITHUB_CI}" ||
   Fail 'GitHub Actions does not install manifest dependencies from Flathub'
 grep -Fq -- '--default-branch=stable' "${GITHUB_CI}" ||
   Fail 'GitHub Actions does not produce the stable Flatpak branch'
-grep -Fq 'Nightcap-x86_64.flatpak' "${GITHUB_CI}" ||
+grep -Fq 'Mokted-x86_64.flatpak' "${GITHUB_CI}" ||
   Fail 'GitHub Actions does not build the installable Flatpak bundle'
 grep -Fq 'actions/upload-artifact@' "${GITHUB_CI}" ||
   Fail 'GitHub Actions does not publish the Flatpak artifact'
@@ -174,7 +178,7 @@ dry_run="$(
 )"
 grep -Fq './scripts/build_flatpak.sh' <<<"${dry_run}" ||
   Fail 'make flatpak does not invoke the guarded Flatpak builder'
-grep -Fq -- '--manifest packaging/flatpak/io.github.CoderDayton.nightcap.json' \
+grep -Fq -- '--manifest packaging/flatpak/io.github.sdqfrmnsyh.mokted.json' \
   <<<"${dry_run}" || Fail 'make flatpak lost the canonical manifest'
 grep -Fq -- '--jobs 4' <<<"${dry_run}" ||
   Fail 'make flatpak does not cap local build parallelism'
@@ -201,24 +205,24 @@ grep -Fq 'flatpak-builder is unavailable' "${TEMP_DIR}/stderr" ||
   Fail 'helper did not explain how to install flatpak-builder'
 
 mkdir -p -- "${TEMP_DIR}/repo/objects"
-printf 'bundle\n' >"${TEMP_DIR}/Nightcap-x86_64.flatpak"
-printf 'public-key\n' >"${TEMP_DIR}/nightcap-flatpak.gpg"
+printf 'bundle\n' >"${TEMP_DIR}/Mokted-x86_64.flatpak"
+printf 'public-key\n' >"${TEMP_DIR}/mokted-flatpak.gpg"
 "${PAGES_HELPER}" \
   "${TEMP_DIR}/repo" \
-  "${TEMP_DIR}/Nightcap-x86_64.flatpak" \
-  "${TEMP_DIR}/nightcap-flatpak.gpg" \
+  "${TEMP_DIR}/Mokted-x86_64.flatpak" \
+  "${TEMP_DIR}/mokted-flatpak.gpg" \
   "${TEMP_DIR}/public"
-grep -Fq 'Url=https://coderdayton.github.io/nightcap/repo/' \
-  "${TEMP_DIR}/public/nightcap.flatpakrepo" ||
+grep -Fq 'Url=https://sdqfrmnsyh.github.io/mokted/repo/' \
+  "${TEMP_DIR}/public/mokted.flatpakrepo" ||
   Fail 'published Flatpak repository URL is incorrect'
-grep -Fq 'Name=io.github.CoderDayton.nightcap' \
-  "${TEMP_DIR}/public/nightcap.flatpakref" ||
+grep -Fq 'Name=io.github.sdqfrmnsyh.mokted' \
+  "${TEMP_DIR}/public/mokted.flatpakref" ||
   Fail 'published Flatpak ref has the wrong application ID'
-grep -Fq 'GPGKey=' "${TEMP_DIR}/public/nightcap.flatpakref" ||
+grep -Fq 'GPGKey=' "${TEMP_DIR}/public/mokted.flatpakref" ||
   Fail 'published Flatpak ref is not pinned to the signing key'
 grep -Fq 'flatpak install --user' "${TEMP_DIR}/public/index.html" ||
   Fail 'Pages landing page has no direct installation command'
-[[ -f "${TEMP_DIR}/public/Nightcap-x86_64.flatpak" &&
+[[ -f "${TEMP_DIR}/public/Mokted-x86_64.flatpak" &&
    -f "${TEMP_DIR}/public/.nojekyll" ]] ||
   Fail 'Pages output is missing the bundle or the .nojekyll marker'
 

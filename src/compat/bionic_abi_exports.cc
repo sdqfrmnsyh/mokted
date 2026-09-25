@@ -16,8 +16,6 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "compat/bionic_pthread_create_runtime.h"
-#include "compat/guest_abi.h"
 #include "compat/http_client_spin_guard.h"
 #include "window/window.h"
 
@@ -31,14 +29,6 @@ std::atomic<bool> g_legacy_bionic_diagnostics_enabled{false};
 const char* EnvironmentOr(const char* name, const char* fallback) {
   const char* value = std::getenv(name);
   return value != nullptr && value[0] != '\0' ? value : fallback;
-}
-
-const char* GuestAbiPropertyValue() {
-#if defined(__aarch64__)
-  return "arm64-v8a";
-#else
-  return "x86_64";
-#endif
 }
 
 int CallHostVsnprintf(char* dst, size_t count, const char* format,
@@ -183,12 +173,8 @@ int __system_property_get(const char* name, char* value) {
     result = "35";
   } else if (std::strcmp(name, "ro.build.version.release") == 0) {
     result = "15";
-  } else if (std::strcmp(name, "ro.product.cpu.abi") == 0 ||
-             std::strcmp(name, "ro.product.cpu.abilist") == 0 ||
-             std::strcmp(name, "ro.product.cpu.abilist64") == 0) {
-    result = GuestAbiPropertyValue();
-  } else if (std::strcmp(name, "ro.product.cpu.abilist32") == 0) {
-    result = "";
+  } else if (std::strcmp(name, "ro.product.cpu.abi") == 0) {
+    result = "x86_64";
   } else if (std::strcmp(name, "ro.product.manufacturer") == 0) {
     result = EnvironmentOr("MOCKTAIL_DEVICE_MANUFACTURER", "Mocktail");
   } else if (std::strcmp(name, "ro.product.model") == 0) {

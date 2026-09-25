@@ -13,15 +13,15 @@ namespace {
 
 constexpr std::uint64_t kMebibyte = 1024U * 1024U;
 
-TEST(TextureMemoryPolicyTest, LeavesTheGuestDefaultOnSmallHosts) {
-  EXPECT_EQ(CalculateTextureMemoryBudgetBytes(0), 0U);
-  EXPECT_EQ(CalculateTextureMemoryBudgetBytes(2048U * kMebibyte), 0U);
-  EXPECT_EQ(CalculateTextureMemoryBudgetBytes(4095U * kMebibyte), 0U);
+TEST(TextureMemoryPolicyTest, UsesSmallBudgetOnLowMemoryHosts) {
+  EXPECT_EQ(CalculateTextureMemoryBudgetBytes(0), 64U * kMebibyte);
+  EXPECT_EQ(CalculateTextureMemoryBudgetBytes(4096U * kMebibyte),
+            64U * kMebibyte);
+  EXPECT_EQ(CalculateTextureMemoryBudgetBytes(8191U * kMebibyte),
+            64U * kMebibyte);
 }
 
 TEST(TextureMemoryPolicyTest, SizesAClampedShareOfHostMemory) {
-  EXPECT_EQ(CalculateTextureMemoryBudgetBytes(4096U * kMebibyte),
-            512U * kMebibyte);
   EXPECT_EQ(CalculateTextureMemoryBudgetBytes(8192U * kMebibyte),
             1024U * kMebibyte);
   // An eighth of a very large host stays inside the PC-class ceiling.

@@ -9,7 +9,6 @@
 #include <string>
 #include <utility>
 
-#include "compat/guest_abi.h"
 #include "update/http_download.h"
 
 namespace mocktail::update {
@@ -200,8 +199,7 @@ std::vector<std::string> ParseApkPureExactDownloadUrls(
 }
 
 ProviderVersion ApkPureProvider::CheckLatest() const {
-  const HttpBytesResult metadata =
-      FetchMetadata(std::string(compat::kGuestAbi));
+  const HttpBytesResult metadata = FetchMetadata("x86_64");
   if (!metadata) return ProviderVersion{{}, 0, metadata.error};
   return ParseApkPureLatestMetadata(metadata.bytes);
 }
@@ -225,7 +223,7 @@ ProviderDownloadResult ApkPureProvider::DownloadExact(
     result.error = "APKPure output directory must exist and be empty";
     return result;
   }
-  HttpBytesResult metadata = FetchMetadata(std::string(compat::kGuestAbi));
+  HttpBytesResult metadata = FetchMetadata("x86_64");
   if (!metadata) {
     result.error = metadata.error;
     return result;

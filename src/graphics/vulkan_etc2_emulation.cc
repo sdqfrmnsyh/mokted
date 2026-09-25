@@ -127,6 +127,36 @@ bool ShouldLog(std::atomic<unsigned>* counter, unsigned limit) {
   return counter->fetch_add(1, std::memory_order_relaxed) < limit;
 }
 
+bool ForceOneByOneTextures() {
+  const char* value = std::getenv("MOCKTAIL_FORCE_1X1_TEXTURES");
+  return value != nullptr && std::strcmp(value, "0") != 0 &&
+         std::strcmp(value, "off") != 0 && std::strcmp(value, "false") != 0;
+}
+
+void FillWithAveragePixel(const std::uint8_t* source, std::size_t bytes,
+                          std::uint8_t* destination,
+                          std::size_t target_bytes) {
+  if (source == nullptr || destination == nullptr || bytes < 4 ||
+      target_bytes < 4) {
+    return;
+  }
+  std::uint64_t channels[4] = {0, 0, 0, 0};
+  const std::size_t pixel_count = bytes / 4;
+  for (std::size_t pixel = 0; pixel < pixel_count; ++pixel) {
+    for (int channel = 0; channel < 4; ++channel) {
+      channels[channel] += source[pixel * 4 + channel];
+    }
+  }
+  const std::uint8_t average[4] = {
+      static_cast<std::uint8_t>(channels[0] / pixel_count),
+      static_cast<std::uint8_t>(channels[1] / pixel_count),
+      static_cast<std::uint8_t>(channels[2] / pixel_count),
+      static_cast<std::uint8_t>(channels[3] / pixel_count)};
+  for (std::size_t pixel = 0; pixel < target_bytes / 4; ++pixel) {
+    std::memcpy(destination + pixel * 4, average, sizeof(average));
+  }
+}
+
 // Decode threads for one submit, the submitting thread included. Half the
 // host's hardware threads, at most 8, leave cores for the game's own threads.
 unsigned DecodeWorkerCount() {
@@ -211,34 +241,19 @@ bool IsColorFormat(EtcFormat format) {
 }
 
 // A host-visible transfer buffer that stays mapped for its whole life.
-// Uploads take ranges of it front to back, and once every range has been
-// released it starts over from the front. Creating a buffer and destroying
-// it each cost the driver a kernel call of a tenth of a millisecond or more,
-// so a join's thousands of uploads share a few blocks instead.
-struct StagingBlock {
+struct Staging {
   VkDevice device = VK_NULL_HANDLE;
   VkBuffer buffer = VK_NULL_HANDLE;
   VkDeviceMemory memory = VK_NULL_HANDLE;
   VkDeviceSize capacity = 0;
   std::uint8_t* mapped = nullptr;
-  // First byte not yet handed out, and the ranges command buffers hold.
-  VkDeviceSize head = 0;
-  std::size_t live = 0;
 };
 
-// One recorded copy's range of a staging block.
-struct Staging {
-  StagingBlock* block = nullptr;
-  VkDeviceSize offset = 0;
-};
-
-// Ranges start on this boundary. It meets the bufferOffset rule of every
-// host format and keeps ranges written by different threads off shared cache
-// lines.
-constexpr VkDeviceSize kStagingAlignment = 256;
-// Empty blocks kept for reuse, counted in block sizes; the rest are
-// destroyed.
-constexpr VkDeviceSize kIdleStagingBlocks = 4;
+// Idle staging buffers kept for reuse. Creating, allocating, binding and
+// mapping one costs hundreds of microseconds in the driver, so a burst of
+// texture uploads would otherwise stall the frame that records it.
+constexpr VkDeviceSize kMaxIdleStagingBytes = 64 * 1024 * 1024;
+constexpr std::size_t kMaxIdleStagingBuffers = 64;
 // Decode batches kept for their buffers once they complete.
 constexpr std::size_t kMaxSpareBatches = 8;
 
@@ -262,6 +277,9 @@ class RawBuffer {
   std::unique_ptr<std::uint8_t[]> data_;
   std::size_t size_ = 0;
 };
+// A request may take an idle buffer up to this size, or up to 4x its own
+// size when larger, so small uploads share buffers without pinning big ones.
+constexpr VkDeviceSize kStagingReuseSlack = 64 * 1024;
 
 struct PendingUpload {
   VkDevice device = VK_NULL_HANDLE;
@@ -339,8 +357,9 @@ void LogFailure(const char* message) {
   }
 }
 
-bool CreateStagingBlock(const HostDevice& dev, VkDeviceSize size,
-                        StagingBlock* block) {
+bool CreateStaging(const HostDevice& dev, VkDeviceSize size, Staging* staging,
+                   std::uint8_t** mapped) {
+  *mapped = nullptr;
   if (dev.create_buffer == nullptr || dev.allocate_memory == nullptr ||
       dev.get_buffer_memory_requirements == nullptr ||
       dev.bind_buffer_memory == nullptr || dev.map_memory == nullptr ||
@@ -390,14 +409,12 @@ bool CreateStagingBlock(const HostDevice& dev, VkDeviceSize size,
     dev.free_memory(dev.device, memory, nullptr);
     return false;
   }
-  block->device = dev.device;
-  block->buffer = buffer;
-  block->memory = memory;
-  block->capacity = size;
-  block->mapped = static_cast<std::uint8_t*>(data);
+  *mapped = static_cast<std::uint8_t*>(data);
+  *staging = {dev.device, buffer, memory, size, *mapped};
   return true;
 }
 
+// Freeing mapped memory unmaps it implicitly.
 // Packs each upload's compressed bytes into `destination`, dropping the row
 // and layer padding the application may have asked for. Sources are parallel
 // to `uploads`.
@@ -447,13 +464,12 @@ void RecordHostWriteBarrier(const HostDevice& dev,
                        nullptr, 0, nullptr);
 }
 
-// Freeing mapped memory unmaps it implicitly.
-void DestroyStagingBlock(const HostDevice& dev, const StagingBlock& block) {
+void DestroyStaging(const HostDevice& dev, const Staging& staging) {
   if (dev.destroy_buffer != nullptr) {
-    dev.destroy_buffer(dev.device, block.buffer, nullptr);
+    dev.destroy_buffer(dev.device, staging.buffer, nullptr);
   }
   if (dev.free_memory != nullptr) {
-    dev.free_memory(dev.device, block.memory, nullptr);
+    dev.free_memory(dev.device, staging.memory, nullptr);
   }
 }
 
@@ -617,9 +633,6 @@ bool PlanRegions(const ImageRecord& record, VkDevice device, VkBuffer source,
 }  // namespace
 
 struct VulkanEtc2Emulation::State {
-  explicit State(VkDeviceSize block_bytes)
-      : staging_block_bytes(block_bytes) {}
-
   std::mutex mutex;
   std::mutex devices_mutex;
   std::unordered_map<VkPhysicalDevice, bool> physical_devices;
@@ -629,10 +642,8 @@ struct VulkanEtc2Emulation::State {
   std::unordered_map<VkDeviceMemory, Mapping> mappings;
   std::unordered_map<VkCommandBuffer, CommandRecord> commands;
   std::atomic<bool> has_commands{false};
-  // Blocks of every device, in creation order. Guarded by `mutex`; a block's
-  // address is stable until it is destroyed.
-  const VkDeviceSize staging_block_bytes;
-  std::vector<std::unique_ptr<StagingBlock>> staging_blocks;
+  std::vector<Staging> idle_staging;
+  VkDeviceSize idle_staging_bytes = 0;
   // Heap buffers reused across submits; they only grow.
   std::mutex scratch_mutex;
   RawBuffer scratch_source;
@@ -674,6 +685,11 @@ struct VulkanEtc2Emulation::State {
   // texels, resampled to the host region size.
   void EmitUpload(const PendingUpload& upload, const std::uint8_t* compressed,
                   const std::uint8_t* decoded) {
+    if (ForceOneByOneTextures() && IsColorFormat(upload.format)) {
+      FillWithAveragePixel(decoded, upload.decoded, upload.target,
+                           upload.target_width * upload.target_height * 4ULL);
+      return;
+    }
     const std::shared_ptr<const RgbaImage> replacement =
         FindOverride(upload, compressed, decoded);
     if (replacement != nullptr) {
@@ -784,78 +800,51 @@ struct VulkanEtc2Emulation::State {
         static_cast<unsigned>(threads));
   }
 
-  // Takes `size` bytes from the first block of the device with room for
-  // them, or from a new block of at least `staging_block_bytes`.
+  // Takes the smallest idle buffer that fits, or creates one.
   bool AcquireStaging(const HostDevice& dev, VkDeviceSize size,
                       Staging* staging) {
-    const VkDeviceSize aligned =
-        (size + kStagingAlignment - 1) / kStagingAlignment * kStagingAlignment;
     {
       std::lock_guard<std::mutex> lock(mutex);
-      for (const auto& block : staging_blocks) {
-        if (block->device == dev.device &&
-            block->capacity - block->head >= aligned) {
-          *staging = {block.get(), block->head};
-          block->head += aligned;
-          ++block->live;
-          return true;
+      const VkDeviceSize limit = std::max(size * 4, kStagingReuseSlack);
+      auto best = idle_staging.end();
+      for (auto it = idle_staging.begin(); it != idle_staging.end(); ++it) {
+        if (it->device == dev.device && it->capacity >= size &&
+            it->capacity <= limit &&
+            (best == idle_staging.end() || it->capacity < best->capacity)) {
+          best = it;
         }
       }
-    }
-    // Created outside the lock, which the decode workers also take.
-    auto block = std::make_unique<StagingBlock>();
-    {
-      const VkDeviceSize capacity = std::max(staging_block_bytes, aligned);
-      TraceScope trace_scope(ActiveProfileTrace(), "etc2 staging create",
-                             "texture");
-      trace_scope.Arg("bytes", static_cast<std::int64_t>(capacity));
-      if (!CreateStagingBlock(dev, capacity, block.get())) {
-        return false;
+      if (best != idle_staging.end()) {
+        *staging = *best;
+        idle_staging_bytes -= best->capacity;
+        *best = idle_staging.back();
+        idle_staging.pop_back();
+        return true;
       }
     }
-    block->head = aligned;
-    block->live = 1;
-    *staging = {block.get(), 0};
-    std::lock_guard<std::mutex> lock(mutex);
-    staging_blocks.push_back(std::move(block));
-    return true;
+    std::uint8_t* mapped = nullptr;
+    return CreateStaging(dev, size, staging, &mapped);
   }
 
-  // Returns ranges to their blocks. A block with no ranges left starts over
-  // from its front; empty blocks beyond kIdleStagingBlocks block sizes are
-  // destroyed.
-  void ReleaseStaging(const std::vector<Staging>& released) {
-    std::vector<std::unique_ptr<StagingBlock>> doomed;
+  // Keeps released buffers for reuse up to the idle limits and destroys
+  // the rest.
+  void ReleaseStaging(std::vector<Staging> released) {
+    std::vector<Staging> doomed;
     {
       std::lock_guard<std::mutex> lock(mutex);
       for (const Staging& staging : released) {
-        if (--staging.block->live == 0) {
-          staging.block->head = 0;
+        if (idle_staging.size() < kMaxIdleStagingBuffers &&
+            idle_staging_bytes + staging.capacity <= kMaxIdleStagingBytes) {
+          idle_staging.push_back(staging);
+          idle_staging_bytes += staging.capacity;
+        } else {
+          doomed.push_back(staging);
         }
       }
-      const VkDeviceSize idle_limit = kIdleStagingBlocks * staging_block_bytes;
-      VkDeviceSize idle_bytes = 0;
-      for (auto it = staging_blocks.begin(); it != staging_blocks.end();) {
-        if ((*it)->live == 0 && idle_bytes + (*it)->capacity > idle_limit) {
-          doomed.push_back(std::move(*it));
-          it = staging_blocks.erase(it);
-          continue;
-        }
-        if ((*it)->live == 0) {
-          idle_bytes += (*it)->capacity;
-        }
-        ++it;
-      }
     }
-    if (doomed.empty()) {
-      return;
-    }
-    TraceScope trace_scope(ActiveProfileTrace(), "etc2 staging destroy",
-                           "texture");
-    trace_scope.Arg("buffers", static_cast<std::int64_t>(doomed.size()));
-    for (const auto& block : doomed) {
-      if (const HostDevice* dev = Find(block->device); dev != nullptr) {
-        DestroyStagingBlock(*dev, *block);
+    for (const Staging& staging : doomed) {
+      if (const HostDevice* dev = Find(staging.device); dev != nullptr) {
+        DestroyStaging(*dev, staging);
       }
     }
   }
@@ -1089,8 +1078,7 @@ struct VulkanEtc2Emulation::State {
   }
 };
 
-VulkanEtc2Emulation::VulkanEtc2Emulation(VkDeviceSize staging_block_bytes)
-    : state_(new State(staging_block_bytes)) {}
+VulkanEtc2Emulation::VulkanEtc2Emulation() : state_(new State) {}
 
 VulkanEtc2Emulation::~VulkanEtc2Emulation() {
   state_->StopDispatcher();
@@ -1210,22 +1198,27 @@ void VulkanEtc2Emulation::RegisterDevice(
 void VulkanEtc2Emulation::DestroyDevice(VkDevice device) {
   // Nothing may free staging or the semaphore while a decode still writes it.
   state_->DrainDecodes();
-  std::vector<std::unique_ptr<StagingBlock>> doomed;
+  std::vector<Staging> doomed;
   {
     std::lock_guard<std::mutex> lock(state_->mutex);
     for (auto it = state_->commands.begin(); it != state_->commands.end();) {
       const bool owned = std::any_of(
           it->second.staging.begin(), it->second.staging.end(),
-          [device](const Staging& staging) {
-            return staging.block->device == device;
-          });
-      it = owned ? state_->commands.erase(it) : std::next(it);
+          [device](const Staging& staging) { return staging.device == device; });
+      if (owned) {
+        doomed.insert(doomed.end(), it->second.staging.begin(),
+                      it->second.staging.end());
+        it = state_->commands.erase(it);
+      } else {
+        ++it;
+      }
     }
-    auto& blocks = state_->staging_blocks;
-    for (auto it = blocks.begin(); it != blocks.end();) {
-      if ((*it)->device == device) {
-        doomed.push_back(std::move(*it));
-        it = blocks.erase(it);
+    for (auto it = state_->idle_staging.begin();
+         it != state_->idle_staging.end();) {
+      if (it->device == device) {
+        state_->idle_staging_bytes -= it->capacity;
+        doomed.push_back(*it);
+        it = state_->idle_staging.erase(it);
       } else {
         ++it;
       }
@@ -1237,8 +1230,8 @@ void VulkanEtc2Emulation::DestroyDevice(VkDevice device) {
                                std::memory_order_release);
   }
   if (const HostDevice* dev = state_->Find(device); dev != nullptr) {
-    for (const auto& block : doomed) {
-      DestroyStagingBlock(*dev, *block);
+    for (const Staging& staging : doomed) {
+      DestroyStaging(*dev, staging);
     }
     if (dev->timeline != VK_NULL_HANDLE && dev->destroy_semaphore != nullptr) {
       dev->destroy_semaphore(device, dev->timeline, nullptr);
@@ -1484,14 +1477,11 @@ void VulkanEtc2Emulation::CmdCopyBufferToImage(
     return;
   }
   for (PendingUpload& upload : uploads) {
-    upload.target = staging.block->mapped + staging.offset + upload.target_offset;
-  }
-  for (VkBufferImageCopy& region : rewritten) {
-    region.bufferOffset += staging.offset;
+    upload.target = staging.mapped + upload.target_offset;
   }
   state_->Record(command_buffer, std::move(uploads), staging);
   RecordHostWriteBarrier(*dev, command_buffer);
-  dev->copy_buffer_to_image(command_buffer, staging.block->buffer, destination,
+  dev->copy_buffer_to_image(command_buffer, staging.buffer, destination,
                             layout, region_count, rewritten.data());
 }
 
@@ -1523,15 +1513,12 @@ void VulkanEtc2Emulation::CmdCopyBufferToImage2(
     return;
   }
   for (PendingUpload& upload : uploads) {
-    upload.target = staging.block->mapped + staging.offset + upload.target_offset;
-  }
-  for (VkBufferImageCopy2& region : rewritten) {
-    region.bufferOffset += staging.offset;
+    upload.target = staging.mapped + upload.target_offset;
   }
   state_->Record(command_buffer, std::move(uploads), staging);
   RecordHostWriteBarrier(*dev, command_buffer);
   VkCopyBufferToImageInfo2 host_info = *info;
-  host_info.srcBuffer = staging.block->buffer;
+  host_info.srcBuffer = staging.buffer;
   host_info.pRegions = rewritten.data();
   dev->copy_buffer_to_image2(command_buffer, &host_info);
 }
@@ -1882,18 +1869,7 @@ void VulkanEtc2Emulation::ReleaseCommandBuffer(VkCommandBuffer command_buffer) {
     ticket = record->second.last_ticket;
   }
   // Waited on without holding the state lock, which the decode itself takes.
-  // Only waits long enough to matter are traced; this runs for every
-  // command buffer the application resets.
-  ChromeTraceWriter* const trace = ActiveProfileTrace();
-  const std::uint64_t wait_start_ns = trace != nullptr ? TraceClockNanos() : 0;
   state_->WaitForTicket(ticket);
-  if (trace != nullptr) {
-    const std::uint64_t wait_end_ns = TraceClockNanos();
-    if (wait_end_ns - wait_start_ns >= 100'000) {
-      trace->Slice("etc2 release wait", "texture", wait_start_ns, wait_end_ns,
-                   {{"ticket", static_cast<std::int64_t>(ticket)}});
-    }
-  }
 
   std::vector<Staging> doomed;
   {

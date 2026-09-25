@@ -10,8 +10,8 @@ readonly REPOSITORY="${1:?Flatpak repository path is required}"
 readonly BUNDLE="${2:?Flatpak bundle path is required}"
 readonly PUBLIC_KEY="${3:?GPG public key path is required}"
 readonly OUTPUT="${4:?Pages output path is required}"
-readonly BASE_URL="https://coderdayton.github.io/nightcap"
-readonly APP_ID="io.github.CoderDayton.nightcap"
+readonly BASE_URL="https://sdqfrmnsyh.github.io/mokted"
+readonly APP_ID="io.github.sdqfrmnsyh.mokted"
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly PROJECT_DIR="$(dirname -- "${SCRIPT_DIR}")"
 
@@ -34,36 +34,36 @@ readonly PROJECT_DIR="$(dirname -- "${SCRIPT_DIR}")"
 
 mkdir -p -- "${OUTPUT}"
 cp -a -- "${REPOSITORY}" "${OUTPUT}/repo"
-install -m 0644 -- "${BUNDLE}" "${OUTPUT}/Nightcap-x86_64.flatpak"
-install -m 0644 -- "${PUBLIC_KEY}" "${OUTPUT}/nightcap-flatpak.gpg"
+install -m 0644 -- "${BUNDLE}" "${OUTPUT}/Mokted-x86_64.flatpak"
+install -m 0644 -- "${PUBLIC_KEY}" "${OUTPUT}/mokted-flatpak.gpg"
 install -m 0644 -- \
   "${PROJECT_DIR}/packaging/${APP_ID}.svg" \
-  "${OUTPUT}/nightcap.svg"
+  "${OUTPUT}/mokted.svg"
 touch -- "${OUTPUT}/.nojekyll"
 
 readonly GPG_KEY="$(base64 --wrap=0 "${PUBLIC_KEY}")"
 
-cat >"${OUTPUT}/nightcap.flatpakrepo" <<EOF
+cat >"${OUTPUT}/mokted.flatpakrepo" <<EOF
 [Flatpak Repo]
-Title=Nightcap
+Title=Mokted
 Url=${BASE_URL}/repo/
-Homepage=https://github.com/CoderDayton/nightcap
-Comment=Nightcap releases
-Description=Signed x86_64 release builds of Nightcap
-Icon=${BASE_URL}/nightcap.svg
+Homepage=https://github.com/sdqfrmnsyh/mokted
+Comment=Mokted releases
+Description=Signed x86_64 release builds of Mokted
+Icon=${BASE_URL}/mokted.svg
 GPGKey=${GPG_KEY}
 EOF
 
-cat >"${OUTPUT}/nightcap.flatpakref" <<EOF
+cat >"${OUTPUT}/mokted.flatpakref" <<EOF
 [Flatpak Ref]
-Title=Nightcap
+Title=Mokted
 Name=${APP_ID}
 Branch=stable
 Url=${BASE_URL}/repo/
 RuntimeRepo=https://dl.flathub.org/repo/flathub.flatpakrepo
-Homepage=https://github.com/CoderDayton/nightcap
+Homepage=https://github.com/sdqfrmnsyh/mokted
 Comment=Roblox on Linux, tuned for a real PC
-Icon=${BASE_URL}/nightcap.svg
+Icon=${BASE_URL}/mokted.svg
 GPGKey=${GPG_KEY}
 IsRuntime=false
 EOF

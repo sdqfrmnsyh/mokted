@@ -151,12 +151,12 @@ AnyLinuxDeploy() {
     "${app_dir}/.env"
 
   local -a deployment_environment=(
-    "APPDIR=${app_dir}" "MAIN_BIN=mocktail" "LIB_DIR=/usr/lib"
+    "APPDIR=${app_dir}" "MAIN_BIN=mokted" "LIB_DIR=/usr/lib"
     "TMPDIR=${ANYLINUX_WORK}/tmp"
-    "DESKTOP=/usr/share/applications/io.github.CoderDayton.nightcap.desktop"
-    "ICON=/usr/share/icons/hicolor/scalable/apps/io.github.CoderDayton.nightcap.svg"
+    "DESKTOP=/usr/share/applications/io.github.sdqfrmnsyh.mokted.desktop"
+    "ICON=/usr/share/icons/hicolor/scalable/apps/io.github.sdqfrmnsyh.mokted.svg"
     "DEPLOY_DATADIR=0" "DEPLOY_LOCALE=0" "DEPLOY_VULKAN=0"
-    "STRACE_MODE=1" "STRACE_BINARY=mocktail" "STRACE_FLAGS=--help"
+    "STRACE_MODE=1" "STRACE_BINARY=mokted" "STRACE_FLAGS=--help"
     "STRACE_TIME=1"
   )
   if [[ -n "${MOCKTAIL_ANYLINUX_SHARUN:-}" ]]; then

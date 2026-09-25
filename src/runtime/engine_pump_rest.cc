@@ -1,13 +1,10 @@
-#include "runtime/engine_pump_rest.h"
+github#include "runtime/engine_pump_rest.h"
 
-#include <sys/prctl.h>
-#include <time.h>
-
-#if defined(__x86_64__)
 #include <cpuid.h>
 #include <immintrin.h>
+#include <sys/prctl.h>
+#include <time.h>
 #include <x86intrin.h>
-#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -26,20 +23,11 @@ uint64_t NowNs() {
 // The kernel caps one TPAUSE at umwait_control/max_time TSC cycles (100000 by
 // default), so the wait is a loop of short pauses up to the deadline. Control
 // bit 0 clear selects C0.2, the deeper of the two light states.
-#if defined(__x86_64__)
 __attribute__((target("waitpkg"))) void TpauseUntil(uint64_t deadline_ns) {
   while (NowNs() < deadline_ns) {
     _tpause(0, __rdtsc() + 100000ULL);
   }
 }
-#else
-// TPAUSE is x86-only. CpuHasWaitPkg() is false on other hosts, so kTpause is
-// never chosen there; this waits out the deadline if it is forced anyway.
-void TpauseUntil(uint64_t deadline_ns) {
-  while (NowNs() < deadline_ns) {
-  }
-}
-#endif
 
 void LowerTimerSlackOnce() {
   // Only the main thread rests, so the slack is set once per process.
@@ -63,8 +51,7 @@ const char* EnginePumpRestModeName(EnginePumpRestMode mode) {
   return "spin";
 }
 
-EnginePumpRestMode ChooseEnginePumpRestMode(
-    const EnginePumpRestInputs& inputs) {
+EnginePumpRestMode ChooseEnginePumpRestMode(const EnginePumpRestInputs& inputs) {
   if (inputs.override != nullptr) {
     if (std::strcmp(inputs.override, "sleep") == 0) {
       return EnginePumpRestMode::kSleep;
@@ -77,11 +64,12 @@ EnginePumpRestMode ChooseEnginePumpRestMode(
       return EnginePumpRestMode::kTpause;
     }
   }
-  if (inputs.governor_performance) {
-    return EnginePumpRestMode::kSleep;
+  if (inputs.governor_performance && inputs.cpu_has_waitpkg) {
+    return EnginePumpRestMode::kTpause;
   }
-  return inputs.cpu_has_waitpkg ? EnginePumpRestMode::kTpause
-                                : EnginePumpRestMode::kSpin;
+  // Without WAITPKG a spin burns a whole hardware thread on a 2C/2T part,
+  // starving the render thread. Sleep always costs less than a stolen core.
+  return EnginePumpRestMode::kSleep;
 }
 
 bool CpuGovernorIsPerformance(const char* path) {
@@ -100,15 +88,11 @@ bool CpuGovernorIsPerformance(const char* path) {
 }
 
 bool CpuHasWaitPkg() {
-#if defined(__x86_64__)
   unsigned eax = 0, ebx = 0, ecx = 0, edx = 0;
   if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx) == 0) {
     return false;
   }
   return (ecx & (1u << 5)) != 0;
-#else
-  return false;
-#endif
 }
 
 EnginePumpRestMode ActiveEnginePumpRestMode() {

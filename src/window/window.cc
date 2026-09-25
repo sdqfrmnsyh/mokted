@@ -114,9 +114,12 @@ struct WindowState {
   void* native_window = nullptr;
   int width = 1280;
   int height = 720;
+  int requested_width = 1280;
+  int requested_height = 720;
   bool initialised = false;
   bool quit_requested = false;
   bool visible = false;
+  bool exclusive_fullscreen = false;
   bool software_window = false;
   bool direct_vulkan = false;
   bool input_test_sequence_queued = false;
@@ -177,6 +180,13 @@ static void ResetPointerCaptureOwner() {
     owner.swap(g_pointer_capture_owner);
   }
 }
+
+// Forward declarations for helpers defined later in this file.
+bool ExclusiveFullscreenRequested();
+bool ApplyExclusiveFullscreenMode(SDL_Window* window, int requested_width,
+                                  int requested_height);
+bool SnapshotCurrentDisplayMode(SDL_Window* window, SDL_DisplayMode* out);
+bool DisplayModeChangedFrom(const SDL_DisplayMode& before, SDL_Window* window);
 
 WindowStartupPresentationPlan RestoredWindowPresentationPlan() {
   if (!g_state.state_persistence_active) {
@@ -1004,6 +1014,8 @@ bool Init(int width, int height, const char* title) {
 
   g_state.state_persistence_active =
       !g_window_state_path.empty() && !WindowStatePersistenceSuppressed();
+  g_state.requested_width = width;
+  g_state.requested_height = height;
   g_state.state_persistence_dirty = false;
   g_state.state_persistence_change_ticks_ns = 0;
   g_state.persisted_window = {};
@@ -1048,10 +1060,15 @@ bool Init(int width, int height, const char* title) {
     }
     const WindowStartupPresentationPlan presentation =
         RestoredWindowPresentationPlan();
+    // Exclusive fullscreen needs the display mode changed BEFORE we enter
+    // fullscreen. If we let SDL create the window with the FULLSCREEN flag,
+    // it picks the desktop's default mode and we cannot switch to exclusive
+    // afterwards. Defer fullscreen to after SDL_ShowWindow instead.
+    const bool want_exclusive_startup = ExclusiveFullscreenRequested();
     SDL_WindowFlags window_flags = ApplyHighPixelDensityWindowFlag(
         SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE,
         IsEnabledEnv("MOCKTAIL_WIN_HIGH_DPI"));
-    if (presentation.fullscreen_at_creation) {
+    if (presentation.fullscreen_at_creation && !want_exclusive_startup) {
       window_flags |= SDL_WINDOW_FULLSCREEN;
     }
     if (!ShouldShowWindowImmediately()) {
@@ -1104,6 +1121,38 @@ bool Init(int width, int height, const char* title) {
       g_state.direct_vulkan = false;
       g_state.initialised = false;
       return false;
+    }
+        if (want_exclusive_startup) {
+      SDL_DisplayMode desktop_before{};
+      const bool have_snapshot =
+          SnapshotCurrentDisplayMode(g_state.sdl_window, &desktop_before);
+      (void)ApplyExclusiveFullscreenMode(g_state.sdl_window,
+                  g_state.requested_width,
+                  g_state.requested_height);
+      if (!SDL_SetWindowFullscreen(g_state.sdl_window, true)) {
+        std::fprintf(stderr,
+                     "  [fullscreen] startup exclusive failed: %s\n",
+                     SDL_GetError());
+        g_state.exclusive_fullscreen = false;
+      } else {
+        const bool verified =
+            have_snapshot &&
+            DisplayModeChangedFrom(desktop_before, g_state.sdl_window);
+        if (verified) {
+          g_state.exclusive_fullscreen = true;
+          std::fprintf(stderr,
+                       "  [fullscreen] startup exclusive confirmed: display "
+                       "mode changed\n");
+        } else {
+          std::fprintf(stderr,
+                       "  [fullscreen] WM kept the desktop mode at startup; "
+                       "falling back to borderless\n");
+          SDL_SetWindowFullscreenMode(g_state.sdl_window, nullptr);
+          g_state.exclusive_fullscreen = false;
+        }
+        g_state.persisted_window.fullscreen = true;
+        g_state.restored_fullscreen_sync_pending = true;
+      }
     }
     int pixel_width = 0;
     int pixel_height = 0;
@@ -1199,10 +1248,11 @@ bool Init(int width, int height, const char* title) {
 
   const WindowStartupPresentationPlan presentation =
       RestoredWindowPresentationPlan();
+  const bool want_exclusive_startup = ExclusiveFullscreenRequested();
   SDL_WindowFlags window_flags = ApplyHighPixelDensityWindowFlag(
       SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE,
       IsEnabledEnv("MOCKTAIL_WIN_HIGH_DPI"));
-  if (presentation.fullscreen_at_creation) {
+  if (presentation.fullscreen_at_creation && !want_exclusive_startup) {
     window_flags |= SDL_WINDOW_FULLSCREEN;
   }
   if (!ShouldShowWindowImmediately()) {
@@ -1303,7 +1353,39 @@ bool Init(int width, int height, const char* title) {
       return false;
     }
     return CreateSoftwareWaitingWindow(width, height, title);
-  }
+    }
+        if (want_exclusive_startup) {
+      SDL_DisplayMode desktop_before{};
+      const bool have_snapshot =
+          SnapshotCurrentDisplayMode(g_state.sdl_window, &desktop_before);
+      (void)ApplyExclusiveFullscreenMode(g_state.sdl_window,
+                  g_state.requested_width,
+                  g_state.requested_height);
+      if (!SDL_SetWindowFullscreen(g_state.sdl_window, true)) {
+        std::fprintf(stderr,
+                     "  [fullscreen] startup exclusive failed: %s\n",
+                     SDL_GetError());
+        g_state.exclusive_fullscreen = false;
+      } else {
+        const bool verified =
+            have_snapshot &&
+            DisplayModeChangedFrom(desktop_before, g_state.sdl_window);
+        if (verified) {
+          g_state.exclusive_fullscreen = true;
+          std::fprintf(stderr,
+                       "  [fullscreen] startup exclusive confirmed: display "
+                       "mode changed\n");
+        } else {
+          std::fprintf(stderr,
+                       "  [fullscreen] WM kept the desktop mode at startup; "
+                       "falling back to borderless\n");
+          SDL_SetWindowFullscreenMode(g_state.sdl_window, nullptr);
+          g_state.exclusive_fullscreen = false;
+        }
+        g_state.persisted_window.fullscreen = true;
+        g_state.restored_fullscreen_sync_pending = true;
+      }
+    }
 
   g_state.egl_display = SDL_EGL_GetCurrentDisplay();
   g_state.egl_config = SDL_EGL_GetCurrentConfig();
@@ -1902,6 +1984,90 @@ bool FullscreenShortcutEnabled() {
   return value == nullptr || !StringEquals(value, "0");
 }
 
+bool ExclusiveFullscreenRequested() {
+  const char* value = GetEnvNonEmpty("MOCKTAIL_EXCLUSIVE_FULLSCREEN");
+  return value != nullptr && std::strcmp(value, "0") != 0;
+}
+
+bool ApplyExclusiveFullscreenMode(SDL_Window* window, int requested_width,
+                                  int requested_height) {
+  if (window == nullptr) {
+    return false;
+  }
+  const SDL_DisplayID display = SDL_GetDisplayForWindow(window);
+  if (display == 0) {
+    return false;
+  }
+  int width = requested_width;
+  int height = requested_height;
+  if (width <= 0 || height <= 0) {
+    SDL_GetWindowSize(window, &width, &height);
+  }
+  if (width <= 0 || height <= 0) {
+    return false;
+  }
+  SDL_DisplayMode closest{};
+  if (!SDL_GetClosestFullscreenDisplayMode(display, width, height, 0.0f,
+                                           false, &closest)) {
+    std::fprintf(stderr,
+                 "  [fullscreen] no matching exclusive mode for %dx%d: %s\n",
+                 width, height, SDL_GetError());
+    SDL_SetWindowFullscreenMode(window, nullptr);
+    return false;
+  }
+  if (!SDL_SetWindowFullscreenMode(window, &closest)) {
+    std::fprintf(stderr, "  [fullscreen] mode override rejected: %s\n",
+                 SDL_GetError());
+    SDL_SetWindowFullscreenMode(window, nullptr);
+    return false;
+  }
+  std::fprintf(stderr,
+               "  [fullscreen] requesting display mode %dx%d @ %.3f Hz\n",
+               closest.w, closest.h,
+               static_cast<double>(closest.refresh_rate));
+  return true;
+}
+
+// Captures the current display mode so we can tell whether exclusive
+// actually changed it. Null mode means the platform doesn't expose one.
+bool SnapshotCurrentDisplayMode(SDL_Window* window, SDL_DisplayMode* out) {
+  if (window == nullptr || out == nullptr) {
+    return false;
+  }
+  const SDL_DisplayID display = SDL_GetDisplayForWindow(window);
+  if (display == 0) {
+    return false;
+  }
+  const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
+  if (mode == nullptr) {
+    return false;
+  }
+  *out = *mode;
+  return true;
+}
+
+// Compares the live display mode against the snapshot taken before entering
+// fullscreen. A tiling WM or any compositor that refuses RandR mode changes
+// leaves the mode unchanged, which is our runtime signal that the exclusive
+// request was rejected and SDL fell back to borderless.
+bool DisplayModeChangedFrom(const SDL_DisplayMode& before, SDL_Window* window) {
+  const SDL_DisplayID display = SDL_GetDisplayForWindow(window);
+  if (display == 0) {
+    return false;
+  }
+  const SDL_DisplayMode* live = SDL_GetCurrentDisplayMode(display);
+  if (live == nullptr) {
+    return false;
+  }
+  const bool dimensions_changed =
+      live->w != before.w || live->h != before.h;
+  const double refresh_delta =
+      static_cast<double>(live->refresh_rate) -
+      static_cast<double>(before.refresh_rate);
+  const bool refresh_changed = refresh_delta > 0.5 || refresh_delta < -0.5;
+  return dimensions_changed || refresh_changed;
+}
+
 bool RequestFullscreenState(bool fullscreen, const char* reason) {
   if (g_state.sdl_window == nullptr) {
     return false;
@@ -1909,16 +2075,50 @@ bool RequestFullscreenState(bool fullscreen, const char* reason) {
   const bool current_fullscreen =
       (SDL_GetWindowFlags(g_state.sdl_window) & SDL_WINDOW_FULLSCREEN) != 0;
   if (current_fullscreen != fullscreen) {
-    // Save the restore rectangle before SDL replaces it with monitor bounds.
     CaptureWindowState();
+
+    const bool want_exclusive = fullscreen && ExclusiveFullscreenRequested();
+    SDL_DisplayMode desktop_before{};
+    const bool have_desktop_before =
+        want_exclusive &&
+        SnapshotCurrentDisplayMode(g_state.sdl_window, &desktop_before);
+
+    if (want_exclusive) {
+      (void)ApplyExclusiveFullscreenMode(g_state.sdl_window,
+                                          g_state.requested_width,
+                                          g_state.requested_height);
+    } else {
+      SDL_SetWindowFullscreenMode(g_state.sdl_window, nullptr);
+    }
+
     if (!SDL_SetWindowFullscreen(g_state.sdl_window, fullscreen)) {
-      fprintf(stderr, "  [fullscreen] SDL request failed: %s\n",
-              SDL_GetError());
+      std::fprintf(stderr, "  [fullscreen] SDL request failed: %s\n",
+                   SDL_GetError());
       return false;
     }
-    fprintf(stderr, "  [fullscreen] %s requested state=%s\n",
-            reason != nullptr ? reason : "toggle",
-            fullscreen ? "fullscreen" : "windowed");
+
+    bool exclusive_active = false;
+    if (want_exclusive && have_desktop_before) {
+      exclusive_active = DisplayModeChangedFrom(desktop_before,
+                                                g_state.sdl_window);
+      if (exclusive_active) {
+        std::fprintf(stderr,
+                     "  [fullscreen] exclusive confirmed: display mode "
+                     "changed\n");
+      } else {
+        std::fprintf(stderr,
+                     "  [fullscreen] WM kept the desktop mode; exclusive "
+                     "was rejected, using borderless\n");
+        SDL_SetWindowFullscreenMode(g_state.sdl_window, nullptr);
+      }
+    }
+    g_state.exclusive_fullscreen = exclusive_active;
+
+    std::fprintf(stderr,
+                 "  [fullscreen] %s requested state=%s mode=%s\n",
+                 reason != nullptr ? reason : "toggle",
+                 fullscreen ? "fullscreen" : "windowed",
+                 g_state.exclusive_fullscreen ? "exclusive" : "borderless");
   }
   if (g_state.state_persistence_active) {
     g_state.persisted_window.fullscreen = fullscreen;
@@ -1934,7 +2134,7 @@ bool RequestFullscreenState(bool fullscreen, const char* reason) {
     }
   }
   if (!g_fullscreen_state_sync.Notify(fullscreen)) {
-    fprintf(stderr,
+    std::fprintf(stderr,
             "  [fullscreen] Roblox settings state synchronization failed\n");
     return false;
   }
@@ -1984,7 +2184,10 @@ bool HandleFullscreenShortcut(const SDL_Event& event) {
 }
 
 void MaybeRequestFullscreenReadiness() {
-  const char* mode = GetEnvNonEmpty("MOCKTAIL_FULLSCREEN_READINESS");
+  static const char* mode = GetEnvNonEmpty("MOCKTAIL_FULLSCREEN_READINESS");
+  if (mode == nullptr) {
+    return;
+  }
   const bool single_transition = StringEquals(mode, "1");
   const bool round_trip = StringEquals(mode, "roundtrip");
   if ((!single_transition && !round_trip) || !HasPresentedFrame()) {

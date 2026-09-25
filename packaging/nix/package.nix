@@ -64,7 +64,7 @@ let
     if match == null then throw "could not find VERSION in CMakeLists.txt" else builtins.elemAt match 0;
 in
 stdenv.mkDerivation (finalAttrs: {
-  pname = "mocktail";
+  pname = "mokted";
   inherit version;
   inherit src;
 
@@ -121,6 +121,7 @@ stdenv.mkDerivation (finalAttrs: {
     "-DCMAKE_INSTALL_LIBDIR=lib"
     "-DMOCKTAIL_DEFAULT_COMPATIBILITY_MANIFEST=${placeholder "out"}/share/mocktail/metadata/roblox_compatibility.json"
     "-DMOCKTAIL_DEFAULT_SIGNING_TRUST_MANIFEST=${placeholder "out"}/share/mocktail/metadata/roblox_signing_certificates.json"
+    "-DMOCKTAIL_BINARY_NAME=mokted"
     "-DBUILD_TESTING=OFF"
   ];
 
@@ -136,9 +137,9 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = with lib; {
     description = "Android x86-64 Roblox compatibility runtime for Linux";
-    homepage = "https://github.com/komaruworld/mocktail";
+    homepage = "https://github.com/sdqfrmnsyh/mokted";
     license = licenses.asl20;
     platforms = platforms.unix;
-    mainProgram = "mocktail";
+    mainProgram = "mokted";
   };
 })

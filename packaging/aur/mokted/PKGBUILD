@@ -1,0 +1,82 @@
+# Maintainer: Mokted contributors
+
+pkgname=mokted
+pkgver=1.0.4
+pkgrel=1
+pkgdesc='Android x86-64 Roblox compatibility runtime for Linux (Mocktail fork)'
+arch=('x86_64')
+url='https://github.com/sdqfrmnsyh/mokted'
+license=('Apache-2.0')
+depends=(
+  'capstone' 'curl' 'fontconfig' 'gcc-libs' 'glib2' 'glibc' 'gtk4'
+  'hicolor-icon-theme' 'libadwaita' 'libelf' 'libglvnd' 'libplacebo'
+  'libpng' 'libsoup3' 'libutf8proc' 'libyaml' 'minizip' 'openssl'
+  'sdl3>=3.4' 'sdl3_ttf' 'vulkan-icd-loader' 'webkitgtk-6.0' 'zlib'
+)
+makedepends=(
+  'cmake>=3.20' 'git' 'lld' 'ninja' 'nlohmann-json' 'pkgconf'
+  'vulkan-headers'
+)
+optdepends=('gamemode: Feral GameMode integration')
+provides=('mocktail' 'mokted')
+conflicts=('mocktail' 'mokted-bin' 'mokted-git')
+options=('!debug' '!lto')
+
+source=()
+sha256sums=()
+
+prepare() {
+  local candidate source_dir
+  for candidate in \
+    "${MOKTED_SOURCE_DIR:-}" \
+    "${startdir}/../../.." \
+    "${PWD}"; do
+    [[ -n "${candidate}" && -f "${candidate}/CMakeLists.txt" ]] || continue
+    source_dir="$(realpath -e -- "${candidate}")"
+    break
+  done
+
+  rm -rf "${srcdir}/mokted"
+  if [[ -n "${source_dir:-}" ]]; then
+    mkdir -p "${srcdir}/mokted"
+    relative_srcdir="$(realpath -m --relative-to="${source_dir}" "${srcdir}")"
+    relative_pkgdir="$(realpath -m --relative-to="${source_dir}" "${pkgdir:-${startdir}/pkg}")"
+    tar -C "${source_dir}" \
+      --exclude="./${relative_srcdir}" \
+      --exclude="./${relative_pkgdir}" \
+      -cf - . | tar -C "${srcdir}/mokted" -xf -
+  else
+    git clone --depth 1 --recurse-submodules \
+      --branch "v${pkgver}" \
+      https://github.com/sdqfrmnsyh/mokted.git \
+      "${srcdir}/mokted"
+  fi
+  git -C "${srcdir}/mokted" submodule update --init -- third_party/Vulkan-Headers
+}
+
+build() {
+  cd "${srcdir}/mokted"
+  cmake -B build-pkg -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" \
+    -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld" \
+    -DMOCKTAIL_HOST_ARCH=bdver4 \
+    -DMOCKTAIL_ENABLE_LTO=OFF \
+    -DMOCKTAIL_ENABLE_UPSTREAM_JNIVM=OFF \
+    -DBUILD_TESTING=OFF \
+    -DMOCKTAIL_DEFAULT_COMPATIBILITY_MANIFEST=/usr/share/mocktail/metadata/roblox_compatibility.json \
+    -DMOCKTAIL_DEFAULT_SIGNING_TRUST_MANIFEST=/usr/share/mocktail/metadata/roblox_signing_certificates.json \
+    -DMOCKTAIL_PACKAGE_NAME=mokted \
+    -DMOCKTAIL_BINARY_NAME=mokted
+  cmake --build build-pkg
+}
+
+package() {
+  DESTDIR="${pkgdir}" cmake --install "${srcdir}/mokted/build-pkg"
+  install -Dm644 "${srcdir}/mokted/LICENSE" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

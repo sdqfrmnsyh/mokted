@@ -39,7 +39,7 @@ if [[ -n "${ANYLINUX_BIN_DIR}" ]]; then
 else
   BIN_DIR="${BUNDLED_BIN_DIR}"
 fi
-MAIN_BINARY="${BIN_DIR}/mocktail"
+MAIN_BINARY="${BIN_DIR}/mokted"
 UPDATE_HELPER="${BIN_DIR}/mocktail_updater"
 FAILURE_DIALOG_HELPER="${BIN_DIR}/mocktail_failure_dialog"
 WEBVIEW_HELPER="${BIN_DIR}/mocktail_webview_helper"
@@ -363,10 +363,10 @@ CheckBundleAbi() {
   [[ "$(uname -m)" == "${ABI_ARCHITECTURE}" ]] ||
     Die "bundle requires ${ABI_ARCHITECTURE}, host is $(uname -m)"
   local main_interpreter host_libc
-  main_interpreter="$(ReadElfInterpreter "${BUNDLED_BIN_DIR}/mocktail")"
+  main_interpreter="$(ReadElfInterpreter "${BUNDLED_BIN_DIR}/mokted")"
   [[ "${main_interpreter}" == "${ABI_INTERPRETER}" ]] ||
     Die "mocktail ELF interpreter does not match ABI.txt (expected ${ABI_INTERPRETER}, found ${main_interpreter:-none})"
-  ValidateBundledElfAbi "${BUNDLED_BIN_DIR}/mocktail" "mocktail"
+  ValidateBundledElfAbi "${BUNDLED_BIN_DIR}/mokted" "mokted"
   ValidateBundledElfAbi "${BUNDLED_BIN_DIR}/mocktail_updater" \
     "Mocktail updater"
   ValidateBundledElfAbi "${BUNDLED_BIN_DIR}/mocktail_webview_helper" \

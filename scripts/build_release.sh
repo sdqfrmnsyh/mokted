@@ -231,9 +231,9 @@ CollectBuildArtifacts() {
 
 VerifyBuildAbi() {
   local detected
-  [[ -x "${BUILD_DIR}/mocktail" ]] ||
-    Die "linked mocktail executable is unavailable: ${BUILD_DIR}/mocktail"
-  detected="$("${ABI_VERIFIER}" --detect "${BUILD_DIR}/mocktail")" ||
+  [[ -x "${BUILD_DIR}/mokted" ]] ||
+    Die "linked mokted executable is unavailable: ${BUILD_DIR}/mokted"
+  detected="$("${ABI_VERIFIER}" --detect "${BUILD_DIR}/mokted")" ||
     Die "cannot identify linked mocktail libc ABI"
   [[ "${detected}" == glibc || "${detected}" == musl ]] ||
     Die "unsupported linked mocktail libc ABI: ${detected}"

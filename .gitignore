@@ -180,3 +180,15 @@ lsan.log*
 
 # Working plans, not part of the shipped documentation
 /docs/plans/
+
+# makepkg artifacts
+packaging/aur/*/src/
+packaging/aur/*/pkg/
+packaging/aur/*/*.pkg.tar.*
+packaging/aur/*/mokted/
+packaging/arch/src/
+packaging/arch/pkg/
+
+# Build artifacts
+build/
+build-pkg/

@@ -9,8 +9,6 @@
 
 #include "runtime/graphics_launch_policy.h"
 
-#include "compat/guest_abi.h"
-
 namespace mocktail {
 namespace runtime {
 namespace {
@@ -42,22 +40,16 @@ void WriteManifest(const std::filesystem::path& path) {
 TEST(VulkanIcdSelectionTest, PrefersTheNativeArchitectureManifest) {
   TemporaryDirectory temporary;
   WriteManifest(temporary.root() / "nvidia_icd.i686.json");
-  const std::string native_name =
-      "nvidia_icd." + std::string(compat::kGuestCpuName) + ".json";
-  WriteManifest(temporary.root() / native_name);
+  WriteManifest(temporary.root() / "nvidia_icd.x86_64.json");
 
   EXPECT_EQ(SelectVulkanIcdManifest({temporary.root()}, "nvidia_icd"),
-            (temporary.root() / native_name).string());
+            (temporary.root() / "nvidia_icd.x86_64.json").string());
 }
 
 TEST(VulkanIcdSelectionTest, NeverSelectsAForeignArchitectureManifest) {
   TemporaryDirectory temporary;
   WriteManifest(temporary.root() / "nvidia_icd.i686.json");
-#if defined(__aarch64__)
-  WriteManifest(temporary.root() / "radeon_icd.x86_64.json");
-#else
   WriteManifest(temporary.root() / "radeon_icd.aarch64.json");
-#endif
 
   EXPECT_TRUE(
       SelectVulkanIcdManifest({temporary.root()}, "nvidia_icd").empty());
@@ -78,8 +70,7 @@ TEST(VulkanIcdSelectionTest, KeepsDirectoryPrecedenceOverName) {
   const std::filesystem::path first = temporary.root() / "first";
   const std::filesystem::path second = temporary.root() / "second";
   WriteManifest(first / "nvidia_icd.json");
-  WriteManifest(second / ("nvidia_icd." +
-                          std::string(compat::kGuestCpuName) + ".json"));
+  WriteManifest(second / "nvidia_icd.x86_64.json");
 
   EXPECT_EQ(SelectVulkanIcdManifest({first, second}, "nvidia_icd"),
             (first / "nvidia_icd.json").string());
@@ -87,15 +78,13 @@ TEST(VulkanIcdSelectionTest, KeepsDirectoryPrecedenceOverName) {
 
 TEST(VulkanIcdSelectionTest, IsStableWhateverTheDirectoryOrderIs) {
   TemporaryDirectory temporary;
-  const std::string native_name =
-      "nvidia_icd." + std::string(compat::kGuestCpuName) + ".json";
-  WriteManifest(temporary.root() / native_name);
+  WriteManifest(temporary.root() / "nvidia_icd.x86_64.json");
   WriteManifest(temporary.root() / "nvidia_icd.json");
   WriteManifest(temporary.root() / "nvidia_icd.i686.json");
 
   const std::string selected =
       SelectVulkanIcdManifest({temporary.root()}, "nvidia_icd");
-  EXPECT_EQ(selected, (temporary.root() / native_name).string());
+  EXPECT_EQ(selected, (temporary.root() / "nvidia_icd.x86_64.json").string());
   EXPECT_EQ(selected, SelectVulkanIcdManifest({temporary.root()},
                                               "nvidia_icd"));
 }

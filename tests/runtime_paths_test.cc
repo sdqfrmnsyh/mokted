@@ -1,8 +1,6 @@
 // Modified by vii from komaruworld/mocktail. See README "About this fork".
 #include "runtime/runtime_paths.h"
 
-#include "compat/guest_abi.h"
-
 #include <gtest/gtest.h>
 #include <unistd.h>
 
@@ -96,8 +94,8 @@ void WriteManagedPayloadFiles(const std::filesystem::path& payload) {
   ASSERT_TRUE(RuntimePaths::EnsureDirectory(payload / "sober_apk"));
   std::ofstream(payload / "libroblox.so") << "ELF fixture";
   std::ofstream(payload / "sober_apk/base.apk") << "base APK fixture";
-  std::ofstream(payload / "sober_apk" / compat::kGuestSplitApkFile)
-      << "split APK fixture";
+  std::ofstream(payload / "sober_apk/split_config.x86_64.apk")
+      << "x86_64 split APK fixture";
 }
 
 TEST(RuntimePathsTest, DerivesXdgDefaults) {
@@ -177,8 +175,8 @@ TEST(RuntimePathsTest, ResolvesValidatedActivePayload) {
   EXPECT_EQ(active.root, std::filesystem::canonical(payload));
   EXPECT_EQ(active.roblox_library, active.root / "libroblox.so");
   EXPECT_EQ(active.base_apk, active.root / "sober_apk/base.apk");
-  EXPECT_EQ(active.arch_split_apk,
-            active.root / "sober_apk" / compat::kGuestSplitApkFile);
+  EXPECT_EQ(active.x86_64_split_apk,
+            active.root / "sober_apk/split_config.x86_64.apk");
   EXPECT_EQ(active.assets_content, active.root / "assets/content");
   EXPECT_EQ(paths.DefaultAssetPath(), active.assets_content);
 }
@@ -192,7 +190,7 @@ TEST(RuntimePathsTest, RejectsIncompleteActiveAndroidPackage) {
   const std::filesystem::path payload = data / "payloads" / payload_id;
   WriteManagedPayloadFiles(payload);
   ASSERT_TRUE(std::filesystem::remove(
-      payload / "sober_apk" / compat::kGuestSplitApkFile));
+      payload / "sober_apk/split_config.x86_64.apk"));
   std::ofstream(data / "current.json")
       << "{\"schema_version\":1,\"payload_id\":\"" << payload_id
       << "\",\"payload_path\":\"payloads/" << payload_id
@@ -208,8 +206,7 @@ TEST(RuntimePathsTest, RejectsIncompleteActiveAndroidPackage) {
           .ResolveActivePayload();
 
   EXPECT_FALSE(active);
-  EXPECT_NE(active.error.find(std::string(compat::kGuestSplitApkFile)),
-            std::string::npos);
+  EXPECT_NE(active.error.find("split_config.x86_64.apk"), std::string::npos);
 }
 
 TEST(RuntimePathsTest, ResolvesCompleteApprovedProfileReferences) {
@@ -500,8 +497,8 @@ TEST(RuntimePathsTest, PreparesManagedPayloadRelativeAssetRoot) {
   active.root = payload;
   active.roblox_library = payload / "libroblox.so";
   active.base_apk = payload / "sober_apk/base.apk";
-  active.arch_split_apk =
-      payload / "sober_apk" / compat::kGuestSplitApkFile;
+  active.x86_64_split_apk =
+      payload / "sober_apk/split_config.x86_64.apk";
   active.assets_content = payload / "assets/content";
 
   std::string error;

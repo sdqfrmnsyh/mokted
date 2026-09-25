@@ -146,7 +146,7 @@ jobs:
       - name: Upload AppImage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Nightcap-AppImage
+          name: Mokted-AppImage
           path: dist/Mocktail-x86_64.AppImage
           if-no-files-found: error
           retention-days: 14
@@ -170,7 +170,7 @@ jobs:
       - name: Download AppImage
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: Nightcap-AppImage
+          name: Mokted-AppImage
           path: release
 
       - name: Name and checksum the nightly build
@@ -179,9 +179,9 @@ jobs:
           set -Eeuo pipefail
           # The Makefile builds under upstream's artifact name; the published
           # asset carries this fork's.
-          mv -- release/Mocktail-x86_64.AppImage release/Nightcap-nightly-x86_64.AppImage
-          (cd release && sha256sum Nightcap-nightly-x86_64.AppImage \
-            > Nightcap-nightly-x86_64.AppImage.sha256)
+          mv -- release/Mocktail-x86_64.AppImage release/Mokted-nightly-x86_64.AppImage
+          (cd release && sha256sum Mokted-nightly-x86_64.AppImage \
+            > Mokted-nightly-x86_64.AppImage.sha256)
           find release -maxdepth 1 -type f -print
 
       - name: Update continuous release
@@ -198,15 +198,15 @@ jobs:
           if ! gh release view continuous >/dev/null 2>&1; then
             gh release create continuous \
               --prerelease \
-              --title "Nightcap continuous" \
+              --title "Mokted continuous" \
               --notes "$notes"
           fi
-          gh release edit continuous --title "Nightcap continuous" --notes "$notes"
+          gh release edit continuous --title "Mokted continuous" --notes "$notes"
           gh release upload continuous release/* --clobber
           # Drop assets left by earlier runs under other names.
           while IFS= read -r asset; do
             case "$asset" in
-              Nightcap-nightly-x86_64.AppImage|Nightcap-nightly-x86_64.AppImage.sha256)
+              Mokted-nightly-x86_64.AppImage|Mokted-nightly-x86_64.AppImage.sha256)
                 ;;
               *)
                 gh release delete-asset continuous "$asset" --yes

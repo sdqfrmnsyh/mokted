@@ -13,8 +13,8 @@ namespace runtime {
 namespace {
 
 constexpr std::uint64_t kMebibyte = 1024U * 1024U;
-// Below this the guest default is already a reasonable share of the host.
-constexpr std::uint64_t kMinimumHostMemoryBytes = 4096U * kMebibyte;
+constexpr std::uint64_t kLowMemoryHostBytes = 8U * 1024U * kMebibyte;
+constexpr std::uint64_t kLowMemoryBudgetBytes = 64U * kMebibyte;
 constexpr std::uint64_t kMinimumBudgetBytes = 256U * kMebibyte;
 constexpr std::uint64_t kMaximumBudgetBytes = 1536U * kMebibyte;
 constexpr std::string_view kVideoMemoryOverride =
@@ -44,8 +44,8 @@ std::uint64_t DetectHostMemoryBytes() {
 
 std::uint64_t CalculateTextureMemoryBudgetBytes(
     std::uint64_t host_memory_bytes) {
-  if (host_memory_bytes < kMinimumHostMemoryBytes) {
-    return 0;
+  if (host_memory_bytes < kLowMemoryHostBytes) {
+    return kLowMemoryBudgetBytes;
   }
   return std::clamp(host_memory_bytes / 8U, kMinimumBudgetBytes,
                     kMaximumBudgetBytes);

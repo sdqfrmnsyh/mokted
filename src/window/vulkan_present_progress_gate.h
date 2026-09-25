@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <cstdio>
 
 namespace mocktail {
 namespace window {
@@ -51,23 +52,39 @@ class VulkanPresentProgressGate final {
       delete;
 
   bool Activate() {
-    uint8_t expected = kLifecycleInactive;
-    if (!lifecycle_state_.compare_exchange_strong(
-            expected, kLifecycleInitializing, std::memory_order_acq_rel,
-            std::memory_order_acquire)) {
-      return false;
-    }
-    lifecycle_epoch_.fetch_add(1, std::memory_order_acq_rel);
-    ResetProgress();
-    lifecycle_state_.store(kLifecycleActive, std::memory_order_release);
-    return true;
+  static std::atomic<unsigned> g_activate_calls{0};
+  const unsigned call_number =
+      g_activate_calls.fetch_add(1, std::memory_order_relaxed) + 1;
+  const uint8_t observed_state =
+      lifecycle_state_.load(std::memory_order_acquire);
+  std::fprintf(stderr,
+               "  [gate-debug] Activate() call #%u observed_state=%u "
+               "this=%p\n",
+               call_number, static_cast<unsigned>(observed_state),
+               static_cast<const void*>(this));
+  uint8_t expected = kLifecycleInactive;
+  if (!lifecycle_state_.compare_exchange_strong(
+          expected, kLifecycleInitializing, std::memory_order_acq_rel,
+          std::memory_order_acquire)) {
+    std::fprintf(stderr,
+                 "  [gate-debug] Activate() CAS failed expected=%u got=%u\n",
+                 static_cast<unsigned>(kLifecycleInactive),
+                 static_cast<unsigned>(expected));
+    return false;
   }
+  lifecycle_epoch_.fetch_add(1, std::memory_order_acq_rel);
+  ResetProgress();
+  lifecycle_state_.store(kLifecycleActive, std::memory_order_release);
+  return true;
+}
 
   void Deactivate() {
-    lifecycle_state_.store(kLifecycleInactive, std::memory_order_release);
-    lifecycle_epoch_.fetch_add(1, std::memory_order_acq_rel);
-    ResetProgress();
-  }
+  std::fprintf(stderr, "  [gate-debug] Deactivate() called from %p\n",
+               __builtin_return_address(0));
+  lifecycle_state_.store(kLifecycleInactive, std::memory_order_release);
+  lifecycle_epoch_.fetch_add(1, std::memory_order_acq_rel);
+  ResetProgress();
+}
 
   uint64_t NotifyHostPresentBegin(uint64_t now_ticks_ns,
                                   uint64_t thread_id = 0) {

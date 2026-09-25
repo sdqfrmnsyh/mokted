@@ -336,19 +336,19 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
   }
   bool discord_booleans_valid = true;
   config.discord_rpc_.enabled = ReadBoolean(
-      environment, "MOCKTAIL_DISCORD_RPC_ENABLED", true,
+      environment, "MOCKTAIL_DISCORD_RPC_ENABLED", false,
       &discord_booleans_valid);
   config.discord_rpc_.show_place_name = ReadBoolean(
-      environment, "MOCKTAIL_DISCORD_RPC_SHOW_PLACE_NAME", true,
+      environment, "MOCKTAIL_DISCORD_RPC_SHOW_PLACE_NAME", false,
       &discord_booleans_valid);
   config.discord_rpc_.show_elapsed_time = ReadBoolean(
-      environment, "MOCKTAIL_DISCORD_RPC_SHOW_ELAPSED_TIME", true,
+      environment, "MOCKTAIL_DISCORD_RPC_SHOW_ELAPSED_TIME", false,
       &discord_booleans_valid);
   config.discord_rpc_.join_enabled = ReadBoolean(
-      environment, "MOCKTAIL_DISCORD_RPC_JOIN_ENABLED", true,
+      environment, "MOCKTAIL_DISCORD_RPC_JOIN_ENABLED", false,
       &discord_booleans_valid);
   config.discord_rpc_.public_servers_only = ReadBoolean(
-      environment, "MOCKTAIL_DISCORD_RPC_PUBLIC_SERVERS_ONLY", true,
+      environment, "MOCKTAIL_DISCORD_RPC_PUBLIC_SERVERS_ONLY", false,
       &discord_booleans_valid);
   config.discord_rpc_.join_button_label = environment.GetOr(
       "MOCKTAIL_DISCORD_RPC_JOIN_BUTTON_LABEL",
@@ -401,6 +401,18 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
     if (LegacyEnabled(environment, name)) {
       config.unsafe_detached_thread_overrides_.emplace_back(name);
     }
+      config.exclusive_fullscreen_ = ReadBoolean(
+      environment, "MOCKTAIL_EXCLUSIVE_FULLSCREEN", false,
+      &config.exclusive_fullscreen_valid_);
+
+  const std::string etc2_mode =
+      environment.GetOr("MOCKTAIL_ETC2_EMULATION", "auto");
+  if (etc2_mode == "auto" || etc2_mode == "native") {
+    config.etc2_emulation_mode_ = etc2_mode;
+  } else {
+    config.etc2_emulation_mode_ = "auto";
+    config.etc2_emulation_valid_ = false;
+   }
   }
   return config;
 }

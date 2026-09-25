@@ -116,7 +116,7 @@ integrations:
     # or ~/.config/Fleasion/proxy_ca/ca.crt. Never select ca.key.
     # ca_certificate: /home/user/.config/Fleasion/proxy_ca/ca.crt
   discord_rpc:
-    # Boolean (default: true): publish Nightcap activity to Discord Desktop.
+    # Boolean (default: true): publish Mokted activity to Discord Desktop.
     # This never signs in to Discord and never reads an account token.
     enabled: true
     # Boolean (default: true): show the current Roblox experience name.

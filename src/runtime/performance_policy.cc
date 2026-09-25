@@ -102,7 +102,10 @@ std::string_view PhysicsWorkerModeName(PhysicsWorkerMode mode) {
 }
 
 int CalculateThroughputWorkerCount(int available_physical_cores) {
-  return std::max(1, available_physical_cores);
+  // On a 2-core Excavator the Roblox scheduler's main thread and render
+  // thread already need a core each. A second worker thread only causes
+  // context switches, so cap the scheduler pool at cores-1.
+  return std::max(1, available_physical_cores - 1);
 }
 
 PerformancePolicy ParsePerformancePolicy(
@@ -207,7 +210,10 @@ bool MergePerformanceClientSettingsOverrides(
     render_worker_count = std::max(1, available_workers);
   }
   if (throughput_mode) {
-    constexpr int kMaximumAsyncMinimum = 3;
+    // Excavator-class CPUs are 2C/2T. The Roblox scheduler's main and render
+    // threads already claim a core each, so a multi-worker pool only adds
+    // context switches. Keep the pool at one worker.
+    constexpr int kMaximumAsyncMinimum = 1;
     render_worker_count = CalculateThroughputWorkerCount(render_worker_count);
     const std::string workers = std::to_string(render_worker_count);
     const std::string async_minimum =
@@ -219,7 +225,7 @@ bool MergePerformanceClientSettingsOverrides(
         {"DFIntSimMidPhaseContactPipelineBatchSize", "128"},
     }};
     apply_settings(physics_settings);
-  } else if (policy.multithreaded_rendering &&
+    } else if (policy.multithreaded_rendering &&
              policy.physics_worker_mode != PhysicsWorkerMode::kLatency) {
     const std::string workers = std::to_string(render_worker_count);
     const std::array<ClientSetting, 2> scheduler_settings = {{
@@ -233,11 +239,12 @@ bool MergePerformanceClientSettingsOverrides(
     const std::string workers = std::to_string(render_worker_count);
     const std::string occlusion_workers =
         std::to_string(std::max(1, render_worker_count / 2));
+    const std::uint64_t host_memory_bytes = DetectHostMemoryBytes();
     const char* custom_quality = std::getenv("MOCKTAIL_GRAPHICS_QUALITY");
     const std::string quality_str =
         (custom_quality != nullptr && custom_quality[0] != '\0')
             ? custom_quality
-            : "3";
+        : (host_memory_bytes < 8ULL * 1024U * 1024U * 1024U ? "1" : "3");
     const bool manual_quality =
         quality_str == "auto" || quality_str == "0" || quality_str == "manual";
 
@@ -314,6 +321,17 @@ bool MergePerformanceClientSettingsOverrides(
         {"FIntMaxAudibleSoundChannels", "32"},
     }};
     apply_settings(rendering_settings);
+    if (host_memory_bytes < 8ULL * 1024U * 1024U * 1024U) {
+      const std::array<ClientSetting, 6> low_memory_settings = {{
+          {"FIntAssetProviderThreads", "1"},
+          {"FIntDefaultMeshCacheSizeMB", "32"},
+          {"FIntRenderTextureTotalBudgetMB", "64"},
+          {"FIntRenderTextureCompositorBudget", "16"},
+          {"FIntInitialAudioAssetCacheSize", "16"},
+          {"FIntProjectedMaxBytesUsedForSoundsMB", "16"},
+      }};
+      apply_settings(low_memory_settings);
+    }
     if (!manual_quality) {
       SetCompatibleValue(&overrides,
                          {"FIntDebugFRMQualityLevelOverride", quality_str},

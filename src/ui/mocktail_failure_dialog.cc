@@ -154,7 +154,7 @@ void InstallProgressStyle(GdkDisplay* display) {
 }
 
 bool InitializeUi(UiStyle style) {
-  g_set_application_name("Nightcap");
+  g_set_application_name("Mokted");
   if (!gtk_init_check()) {
     return false;
   }
@@ -170,7 +170,7 @@ bool InitializeUi(UiStyle style) {
   if (display == nullptr) {
     return false;
   }
-  gtk_window_set_default_icon_name("io.github.CoderDayton.nightcap");
+  gtk_window_set_default_icon_name("io.github.sdqfrmnsyh.mokted");
   adw_style_manager_set_color_scheme(adw_style_manager_get_default(),
                                      ADW_COLOR_SCHEME_FORCE_DARK);
   adw_style_manager_set_color_scheme(adw_style_manager_get_for_display(display),
@@ -230,7 +230,7 @@ void PresentProgressWindow(ProgressState* state, std::string_view message) {
   GtkWidget* window_widget = adw_window_new();
   state->window = GTK_WINDOW(g_object_ref_sink(window_widget));
   gtk_widget_add_css_class(window_widget, "mocktail-update-progress");
-  gtk_window_set_title(state->window, "Nightcap");
+  gtk_window_set_title(state->window, "Mokted");
   gtk_window_set_default_size(state->window, 470, 640);
 
   GtkWidget* toolbar_widget = adw_toolbar_view_new();

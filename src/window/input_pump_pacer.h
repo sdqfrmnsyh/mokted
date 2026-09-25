@@ -7,7 +7,7 @@
 namespace mocktail {
 namespace window {
 
-inline constexpr uint64_t kProductionInputPumpHz = 240;
+inline constexpr uint64_t kProductionInputPumpHz = 120;
 inline constexpr uint64_t kProductionInputPumpIntervalNs =
     1000000000ULL / kProductionInputPumpHz;
 

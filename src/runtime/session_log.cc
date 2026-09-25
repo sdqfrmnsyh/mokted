@@ -654,7 +654,9 @@ SessionLog SessionLog::Start(const Environment& environment,
     (void)unlink(result.path_.c_str());
     return result;
   }
-  (void)setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
+  // Full buffering: fewer write() syscalls. The tee child still flushes
+// on newline, so `tail -f` shows logs live with at most one line of lag.
+(void)setvbuf(stdout, nullptr, _IOFBF, 64 * 1024);
 
   result.logger_process_ = static_cast<int>(child);
   result.active_ = true;

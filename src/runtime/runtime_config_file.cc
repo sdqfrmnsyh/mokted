@@ -153,6 +153,8 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
   const std::unordered_set<std::string> supported = {
       "version",
       "device",
+      "display.exclusive_fullscreen",
+      "graphics.etc2_emulation",
       "device.__mapping",
       "device.type",
       "device.platform",
@@ -340,6 +342,28 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
       return false;
     }
     (*environment)["MOCKTAIL_VSYNC"] = *vsync;
+  }
+    if (const auto exclusive = value("display.exclusive_fullscreen");
+      exclusive.has_value()) {
+    bool parsed = false;
+    if (!ParseBoolean(*exclusive, &parsed)) {
+      *error = "display.exclusive_fullscreen must be true or false";
+      return false;
+    }
+    (*environment)["MOCKTAIL_EXCLUSIVE_FULLSCREEN"] = parsed ? "1" : "0";
+  }
+
+  if (const auto etc2 = value("graphics.etc2_emulation");
+      etc2.has_value()) {
+    if (*etc2 != "auto" && *etc2 != "native") {
+      *error = "graphics.etc2_emulation must be auto or native";
+      return false;
+    }
+    (*environment)["MOCKTAIL_ETC2_EMULATION"] = *etc2;
+    if (*etc2 == "native") {
+      // Downstream code still reads the legacy env var.
+      (*environment)["MOCKTAIL_DISABLE_ETC2_EMULATION"] = "1";
+    }
   }
   if (const auto multithreaded_rendering =
           value("performance.multithreaded_rendering");
@@ -713,9 +737,10 @@ bool LoadYaml(const std::filesystem::path& path, ValueMap* values, bool* loaded,
           valid = false;
         }
       } else if (key == "runtime" || key == "appearance" ||
-                 key == "graphics" || key == "performance" ||
-                 key == "audio" || key == "window" || key == "input" ||
-                 key == "compatibility" || key == "network") {
+           key == "graphics" || key == "performance" ||
+           key == "audio" || key == "window" || key == "input" ||
+           key == "compatibility" || key == "network" ||
+           key == "display") {
         valid = ReadMapping(&document, value_node, key, values, error);
       } else if (key == "integrations") {
         valid = ReadNestedMapping(&document, value_node, key, 2, values, error);
@@ -797,6 +822,10 @@ RuntimeConfigLoadResult LoadRuntimeConfig(
              result.config.vsync_mode() != "on" &&
              result.config.vsync_mode() != "off") {
     result.error = "VSync policy is invalid";
+  } else if (!result.config.exclusive_fullscreen_valid()) {
+    result.error = "display exclusive fullscreen policy is invalid";
+  } else if (!result.config.etc2_emulation_valid()) {
+    result.error = "graphics ETC2 emulation policy is invalid";
   } else if (!result.config.audio_output_device_valid()) {
     result.error = "audio output device is invalid";
   } else if (!result.config.audio_input_device_valid()) {
@@ -927,6 +956,12 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_FRAME_RATE_LIMIT",
                           FrameRateValue(config.frame_rate()), error) &&
       SetEnvironmentValue("MOCKTAIL_VSYNC", config.vsync_mode(), error) &&
+      SetEnvironmentValue("MOCKTAIL_EXCLUSIVE_FULLSCREEN",
+                          config.exclusive_fullscreen() ? "1" : "0", error) &&
+      SetEnvironmentValue("MOCKTAIL_ETC2_EMULATION",
+                          std::string(config.etc2_emulation_mode()), error) &&
+      SetEnvironmentValue("MOCKTAIL_DISABLE_ETC2_EMULATION",
+                          config.etc2_emulation_mode() == "native" ? "1" : "0", error) &&
       SetEnvironmentValue(
           "MOCKTAIL_MULTITHREADED_RENDERING",
           config.performance().multithreaded_rendering ? "1" : "0", error) &&

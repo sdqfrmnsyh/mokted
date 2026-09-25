@@ -29,21 +29,12 @@ constexpr const char* kIcdDirectories[] = {
     "/usr/local/share/vulkan/icd.d",
 };
 
-#if defined(__aarch64__)
-constexpr char kNativeArchitecture[] = "aarch64";
-
-constexpr const char* kForeignArchitectures[] = {
-    "i686",  "i586", "i486",  "i386",    "x86_64",  "x86.",
-    "amd64", "armhf", "armv7", "ppc64", "riscv64", "s390x",
-};
-#else
 constexpr char kNativeArchitecture[] = "x86_64";
 
 constexpr const char* kForeignArchitectures[] = {
     "i686", "i586", "i486", "i386",   "x86.",   "aarch64",
     "arm64", "armhf", "armv7", "ppc64", "riscv64", "s390x",
 };
-#endif
 
 struct HostGpus {
   bool intel = false;
@@ -299,7 +290,8 @@ bool ApplyGraphicsLaunchPolicy(const RuntimeConfig& config,
         // Move GEM_EXECBUFFER2 off the application thread onto Mesa's submit
         // worker so the render thread is not stuck in i915 ioctl.
         !SetDefault("MESA_VK_ENABLE_SUBMIT_THREAD", "1", error) ||
-        !ApplyVulkanIcdPolicy(gpus, error)) {
+        !ApplyVulkanIcdPolicy(gpus, error) ||
+        !SetDefault("MOCKTAIL_FORCE_1X1_TEXTURES", "1", error)) {
       return false;
     }
     // Low FRM only on Intel-only machines. Hybrid NVIDIA/AMD laptops should

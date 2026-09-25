@@ -18,8 +18,6 @@
 #include <thread>
 #include <vector>
 
-#include "compat/guest_abi.h"
-
 namespace mocktail::update {
 namespace {
 
@@ -293,7 +291,7 @@ PayloadIntegrityResult InspectPreparedPayload(
   for (const std::filesystem::path& relative : {
            std::filesystem::path("libroblox.so"),
            std::filesystem::path("sober_apk/base.apk"),
-           std::filesystem::path("sober_apk") / compat::kGuestSplitApkFile,
+           std::filesystem::path("sober_apk/split_config.x86_64.apk"),
            std::filesystem::path("roblox_payload.json"),
        }) {
     const auto status =
@@ -337,7 +335,7 @@ PayloadIntegrityResult InspectPreparedPayload(
   result.metadata.library_sha256 = document["sha256"].value("libroblox", "");
   result.metadata.base_apk_sha256 = document["sha256"].value("base_apk", "");
   result.metadata.split_apk_sha256 =
-      document["sha256"].value(std::string(compat::kGuestSplitApkHashKey), "");
+      document["sha256"].value("x86_64_split_apk", "");
   if (!document["assets"].contains("file_count") ||
       !document["assets"]["file_count"].is_number_unsigned()) {
     result.error = "payload metadata asset count is invalid";
@@ -370,8 +368,7 @@ PayloadIntegrityResult VerifyPreparedPayload(
   const std::array<std::pair<std::filesystem::path, std::string>, 3> files = {{
       {"libroblox.so", result.metadata.library_sha256},
       {"sober_apk/base.apk", result.metadata.base_apk_sha256},
-      {std::filesystem::path("sober_apk") / compat::kGuestSplitApkFile,
-       result.metadata.split_apk_sha256},
+      {"sober_apk/split_config.x86_64.apk", result.metadata.split_apk_sha256},
   }};
   for (const auto& [relative, expected] : files) {
     const std::string actual =

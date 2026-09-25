@@ -6,7 +6,7 @@
 set -Eeuo pipefail
 umask 077
 
-readonly DESKTOP_ID="io.github.CoderDayton.nightcap.desktop"
+readonly DESKTOP_ID="io.github.sdqfrmnsyh.mokted.desktop"
 readonly ROBLOX_SCHEME="x-scheme-handler/roblox"
 readonly ROBLOX_PLAYER_SCHEME="x-scheme-handler/roblox-player"
 
@@ -95,15 +95,15 @@ done
 script_dir="$(cd -P -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -z "${mocktail_executable}" ]]; then
   for candidate in \
-      "${script_dir}/mocktail" \
-      "${script_dir}/../build/mocktail"; do
+      "${script_dir}/mokted" \
+      "${script_dir}/../build/mokted"; do
     if [[ -f "${candidate}" && -x "${candidate}" ]]; then
       mocktail_executable="${candidate}"
       break
     fi
   done
   if [[ -z "${mocktail_executable}" ]]; then
-    mocktail_executable="$(command -v mocktail 2>/dev/null || true)"
+    mocktail_executable="$(command -v mokted 2>/dev/null || true)"
   fi
 fi
 [[ -n "${mocktail_executable}" ]] ||
@@ -112,7 +112,7 @@ mocktail_executable="$(ResolveExecutable "${mocktail_executable}")"
 source_tree_root="$(cd -P -- "${script_dir}/.." && pwd)"
 launch_working_directory=""
 if [[ "${mocktail_executable}" == \
-      "${source_tree_root}/build/mocktail" ]]; then
+      "${source_tree_root}/build/mokted" ]]; then
   launch_working_directory="${source_tree_root}"
 fi
 
@@ -140,7 +140,7 @@ desktop_source="$(ResolveRegularFile "${desktop_source}" "desktop template")"
 
 [[ "$(grep -Fxc '[Desktop Entry]' "${desktop_source}")" == 1 &&
    "$(grep -Fxc 'Type=Application' "${desktop_source}")" == 1 &&
-   "$(grep -Fxc 'Icon=io.github.CoderDayton.nightcap' "${desktop_source}")" == 1 &&
+   "$(grep -Fxc 'Icon=io.github.sdqfrmnsyh.mokted' "${desktop_source}")" == 1 &&
    "$(grep -Fxc 'Exec=env SDL_VIDEODRIVER=wayland,x11 mocktail %u' \
        "${desktop_source}")" == 1 &&
    "$(grep -Fxc 'MimeType=x-scheme-handler/roblox;x-scheme-handler/roblox-player;' \

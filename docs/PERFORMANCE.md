@@ -1,11 +1,11 @@
 # Performance and CPU load
 
-What Nightcap does to your CPU and GPU, which knobs change it, and how to
+What Mokted does to your CPU and GPU, which knobs change it, and how to
 measure rather than guess.
 
 ## GameMode core pinning
 
-Nightcap asks Feral GameMode for a performance session at startup
+Mokted asks Feral GameMode for a performance session at startup
 (`performance.gamemode`, default `auto`). GameMode raises the CPU governor and
 the process priority, which helps.
 
@@ -19,8 +19,8 @@ near their boost ceiling and run hot while the rest of the chip idles.
 GameMode re-applies the pin roughly every 5 seconds, so widening the mask from
 inside the process does not hold. Releasing the request does release the pin.
 
-Under `auto`, Nightcap therefore checks its CPU affinity immediately after the
-request. If GameMode narrowed it, Nightcap ends the request and prints:
+Under `auto`, Mokted therefore checks its CPU affinity immediately after the
+request. If GameMode narrowed it, Mokted ends the request and prints:
 
 ```
   [gamemode] released: it pinned this process to a subset of the CPUs, ...
@@ -53,7 +53,7 @@ because `sleep` is only chosen when the governor reads `performance`. On one
 177% CPU to 42% and the package from 70°C to 53-63°C, at the same frame rate.
 
 GameMode reads `$XDG_CONFIG_HOME`, `/usr/share/gamemode` and `/etc`, in that
-order. It does not read anything under Nightcap's own config directory, so this
+order. It does not read anything under Mokted's own config directory, so this
 file has to live in one of those three places. The daemon reads it when it
 starts, so restart it after editing: `systemctl --user restart gamemoded`.
 
@@ -81,7 +81,7 @@ sudo usermod -aG gamemode "$USER"
 Fedora and Arch allow any logged-in local user.
 
 Setting `performance.gamemode: on` accepts the pinning instead: `on` is an
-explicit request for GameMode, and Nightcap keeps the session whatever it does
+explicit request for GameMode, and Mokted keeps the session whatever it does
 to the affinity. `off` never contacts the daemon.
 
 To see which CPUs the process may use:
@@ -154,7 +154,7 @@ MOCKTAIL_SMALL_TEXTURE_UPSCALE=1 mocktail
 ## Frame rate and present mode
 
 `graphics.frame_rate_limit` (default `-1`) leaves Roblox's own in-game
-framerate cap in charge; Nightcap sets no `DFIntTaskSchedulerTargetFps`
+framerate cap in charge; Mokted sets no `DFIntTaskSchedulerTargetFps`
 override. A fixed value forwards that number to the scheduler.
 
 `graphics.vsync` (default `auto`) selects the presentation mode. `auto` and
@@ -170,7 +170,7 @@ you cannot see. Lower the in-game cap to your refresh rate first.
 ## Measuring
 
 Shift+F4 in game shows Roblox's own scheduler jobs, with a millisecond cost and
-a percentage for each. It does not show Nightcap's threads — the Vulkan
+a percentage for each. It does not show Mokted's threads — the Vulkan
 adapter, the ETC2 decode workers, the libc shim — so it is a reading on the
 game, not on the process.
 

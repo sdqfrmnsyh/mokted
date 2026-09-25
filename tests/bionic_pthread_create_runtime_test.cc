@@ -5,8 +5,6 @@
 #include <sched.h>
 #include <unistd.h>
 
-#include "compat/bionic_abi_exports.h"
-
 #include <algorithm>
 #include <atomic>
 
@@ -191,10 +189,9 @@ TEST(BionicPthreadCreateRuntimeTest, GrowsRejectedExplicitGuestStack) {
             0);
   ASSERT_EQ(pthread_attr_destroy(&host_defaults), 0);
 
-  MocktailBionicPthreadAttr guest_attributes;
-  ASSERT_EQ(mocktail_pthread_attr_init(&guest_attributes), 0);
-  ASSERT_EQ(mocktail_pthread_attr_setstacksize(&guest_attributes,
-                                             kRequestedStackSize),
+  pthread_attr_t guest_attributes;
+  ASSERT_EQ(pthread_attr_init(&guest_attributes), 0);
+  ASSERT_EQ(pthread_attr_setstacksize(&guest_attributes, kRequestedStackSize),
             0);
 
   g_intercepted_create_calls.store(0, std::memory_order_release);
@@ -209,7 +206,7 @@ TEST(BionicPthreadCreateRuntimeTest, GrowsRejectedExplicitGuestStack) {
       &thread, &guest_attributes, RecordThreadStackSize, nullptr);
   g_intercept_pthread_create.store(false, std::memory_order_release);
 
-  ASSERT_EQ(mocktail_pthread_attr_destroy(&guest_attributes), 0);
+  ASSERT_EQ(pthread_attr_destroy(&guest_attributes), 0);
   ASSERT_EQ(result, 0);
   ASSERT_EQ(pthread_join(thread, nullptr), 0);
   EXPECT_EQ(g_intercepted_create_calls.load(std::memory_order_acquire), 3);
@@ -226,16 +223,15 @@ TEST(BionicPthreadCreateRuntimeTest, PreservesRequestedStackSize) {
   constexpr size_t kRequestedStackSize = 2 * 1024 * 1024;
   g_observed_stack_size.store(0, std::memory_order_release);
 
-  MocktailBionicPthreadAttr attributes;
-  ASSERT_EQ(mocktail_pthread_attr_init(&attributes), 0);
-  ASSERT_EQ(
-      mocktail_pthread_attr_setstacksize(&attributes, kRequestedStackSize), 0);
+  pthread_attr_t attributes;
+  ASSERT_EQ(pthread_attr_init(&attributes), 0);
+  ASSERT_EQ(pthread_attr_setstacksize(&attributes, kRequestedStackSize), 0);
 
   pthread_t thread{};
   ASSERT_EQ(mocktail_bionic_pthread_create(&thread, &attributes,
                                            RecordThreadStackSize, nullptr),
             0);
-  EXPECT_EQ(mocktail_pthread_attr_destroy(&attributes), 0);
+  EXPECT_EQ(pthread_attr_destroy(&attributes), 0);
   ASSERT_EQ(pthread_join(thread, nullptr), 0);
   ExpectRequestedStackSize(
       g_observed_stack_size.load(std::memory_order_acquire),
@@ -244,13 +240,13 @@ TEST(BionicPthreadCreateRuntimeTest, PreservesRequestedStackSize) {
 
 TEST(BionicPthreadCreateRuntimeTest, RejectsExplicitRealtimeBeforeHostCreate) {
   for (const int policy : {SCHED_FIFO, SCHED_RR}) {
-    MocktailBionicPthreadAttr attributes;
-    ASSERT_EQ(mocktail_pthread_attr_init(&attributes), 0);
-    attributes.sched_policy = policy;
+    pthread_attr_t attributes;
+    ASSERT_EQ(pthread_attr_init(&attributes), 0);
+    ASSERT_EQ(pthread_attr_setinheritsched(&attributes, PTHREAD_EXPLICIT_SCHED), 0);
+    ASSERT_EQ(pthread_attr_setschedpolicy(&attributes, policy), 0);
     sched_param parameters{};
     parameters.sched_priority = 99;
-    ASSERT_EQ(
-        mocktail_pthread_attr_setschedparam(&attributes, &parameters), 0);
+    ASSERT_EQ(pthread_attr_setschedparam(&attributes, &parameters), 0);
     g_intercepted_create_calls.store(0);
     g_intercept_pthread_create.store(true);
     pthread_t thread{};
@@ -259,7 +255,7 @@ TEST(BionicPthreadCreateRuntimeTest, RejectsExplicitRealtimeBeforeHostCreate) {
     g_intercept_pthread_create.store(false);
     EXPECT_EQ(result, EPERM);
     EXPECT_EQ(g_intercepted_create_calls.load(), 0);
-    EXPECT_EQ(mocktail_pthread_attr_destroy(&attributes), 0);
+    EXPECT_EQ(pthread_attr_destroy(&attributes), 0);
   }
 }
 

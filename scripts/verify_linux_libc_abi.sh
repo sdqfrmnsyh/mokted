@@ -110,14 +110,8 @@ for elf in "$@"; do
   fi
   machine="$(LC_ALL=C readelf --file-header "${elf}" 2>/dev/null |
     sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p')"
-  case "$(uname -m)" in
-    x86_64) expected_machine='X86-64' ;;
-    aarch64) expected_machine='AArch64' ;;
-    *) expected_machine='X86-64' ;;
-  esac
-  if [[ "${machine}" != *"${expected_machine}"* ]]; then
-    printf 'ABI check: %s is not %s (%s)\n' "${elf}" "${expected_machine}" \
-      "${machine}" >&2
+  if [[ "${machine}" != *X86-64* ]]; then
+    printf 'ABI check: %s is not x86-64 (%s)\n' "${elf}" "${machine}" >&2
     status=1
   fi
 

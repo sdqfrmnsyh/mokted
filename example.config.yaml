@@ -1,0 +1,51 @@
+version: 1
+
+device: mobile-pixel-7
+
+runtime:
+  headless: false
+
+appearance:
+  theme: dark
+
+graphics:
+  backend: direct-vulkan
+  frame_rate_limit: 30
+  vsync: on
+  # ETC2: biarkan auto untuk deteksi GPU (default), atau paksa "native"
+  # kalau deteksi salah dan GPU kamu sebenarnya support ETC2.
+  etc2_emulation: native
+
+performance:
+  multithreaded_rendering: true
+  physics_worker_mode: throughput
+  memory_limit_mb: 2048
+  gamemode: on
+ 
+  
+audio:
+  output_device: default
+  input_device: disabled
+
+integrations:
+  discord_rpc:
+    enabled: false
+
+window:
+  width: 720
+  height: 400
+  title: Mokted
+  high_dpi: false
+  
+display:
+  # true: bypass compositor (X11), pakai display mode native (misal 1024x768).
+  # false: borderless fullscreen (default, lebih aman).
+  exclusive_fullscreen: false
+
+network:
+  use_system_proxy: false
+
+updates:
+  automatic: true
+  source: apk-pure
+  launch_after_update: false

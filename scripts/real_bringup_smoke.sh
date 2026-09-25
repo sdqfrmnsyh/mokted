@@ -17,7 +17,7 @@ WORKING_DIRECTORY="${MOCKTAIL_WORKING_DIRECTORY:-${ROOT}}"
 }
 cd "${WORKING_DIRECTORY}"
 
-BIN="${MOCKTAIL_BIN:-${ROOT}/build/mocktail}"
+BIN="${MOCKTAIL_BIN:-${ROOT}/build/mokted}"
 TIER="${1:-A}"
 if (( $# > 0 )); then
   shift

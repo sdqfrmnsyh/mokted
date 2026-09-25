@@ -140,6 +140,10 @@ class RuntimeConfig {
   bool use_system_proxy() const { return use_system_proxy_; }
   bool fleasion_enabled() const { return fleasion_enabled_; }
   bool fleasion_valid() const { return fleasion_valid_; }
+  bool exclusive_fullscreen() const { return exclusive_fullscreen_; }
+  bool exclusive_fullscreen_valid() const { return exclusive_fullscreen_valid_; }
+  std::string_view etc2_emulation_mode() const { return etc2_emulation_mode_; }
+  bool etc2_emulation_valid() const { return etc2_emulation_valid_; }
   const std::string& fleasion_proxy_mode() const { return fleasion_proxy_mode_; }
   int fleasion_proxy_port() const { return fleasion_proxy_port_; }
   const std::optional<std::filesystem::path>& fleasion_ca_certificate() const {
@@ -189,6 +193,11 @@ class RuntimeConfig {
   DiscordRpcConfig discord_rpc_;
   bool discord_rpc_valid_ = true;
   std::vector<std::string> unsafe_detached_thread_overrides_;
+  bool exclusive_fullscreen_ = false;
+  bool exclusive_fullscreen_valid_ = true;
+  // "auto" honours GPU detection, "native" forces emulation off.
+  std::string etc2_emulation_mode_ = "auto";
+  bool etc2_emulation_valid_ = true;
 };
 
 }  // namespace runtime

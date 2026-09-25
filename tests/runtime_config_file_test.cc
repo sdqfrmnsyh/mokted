@@ -156,7 +156,7 @@ TEST(RuntimeConfigBootstrapTest,
            "startup.\n  output_device: default",
            "# between boots; prefer the exact device name when it is unique.\n"
            "  input_device: default",
-           "# Boolean (default: true): publish Nightcap activity to Discord "
+           "# Boolean (default: true): publish Mokted activity to Discord "
            "Desktop.\n    # This never signs in to Discord and never reads an "
            "account token.\n    enabled: true",
            "# Boolean (default: true): show the current Roblox experience "
@@ -363,7 +363,7 @@ integrations:
       title: "{place_name}"
     images:
       large: ""
-      small: nightcap_logo
+      small: mokted_logo
       small_text: On Linux
 updates:
   automatic: true
@@ -417,7 +417,7 @@ updates:
   EXPECT_EQ(loaded.config.discord_rpc().text.title, "{place_name}");
   EXPECT_TRUE(loaded.config.discord_rpc().images.large.empty());
   EXPECT_EQ(loaded.config.discord_rpc().images.large_text, "{place_name}");
-  EXPECT_EQ(loaded.config.discord_rpc().images.small, "nightcap_logo");
+  EXPECT_EQ(loaded.config.discord_rpc().images.small, "mokted_logo");
   EXPECT_EQ(loaded.config.discord_rpc().images.small_text, "On Linux");
   EXPECT_TRUE(loaded.config.discord_rpc_valid());
 }
@@ -463,7 +463,7 @@ integrations:
 TEST(RuntimeConfigFileTest, ExportsDiscordPresenceFieldsIncludingEmptyValues) {
   std::string error;
   const RuntimeConfig configured = RuntimeConfig::FromEnvironment(
-      MapEnvironment({{"MOCKTAIL_DISCORD_RPC_TEXT_TITLE", "Nightcap"},
+      MapEnvironment({{"MOCKTAIL_DISCORD_RPC_TEXT_TITLE", "Mokted"},
                       {"MOCKTAIL_DISCORD_RPC_TEXT_STATE", ""},
                       {"MOCKTAIL_DISCORD_RPC_IMAGE_LARGE", ""},
                       {"MOCKTAIL_DISCORD_RPC_IMAGE_SMALL", "linux"}}));
@@ -471,7 +471,7 @@ TEST(RuntimeConfigFileTest, ExportsDiscordPresenceFieldsIncludingEmptyValues) {
 
   const RuntimeConfig exported =
       RuntimeConfig::FromEnvironment(ProcessEnvironment());
-  EXPECT_EQ(exported.discord_rpc().text.title, "Nightcap");
+  EXPECT_EQ(exported.discord_rpc().text.title, "Mokted");
   EXPECT_TRUE(exported.discord_rpc().text.state.empty());
   EXPECT_TRUE(exported.discord_rpc_valid());
   EXPECT_TRUE(exported.discord_rpc().images.large.empty());

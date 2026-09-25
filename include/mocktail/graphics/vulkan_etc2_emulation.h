@@ -47,10 +47,6 @@ inline constexpr std::uint32_t kSmallTextureMaxExtent = 64;
 inline constexpr std::uint32_t kDefaultSmallTextureUpscale = 4;
 std::uint32_t SmallTextureUpscale(const char* value);
 
-// Staging for decoded uploads is carved out of host-visible blocks this
-// large; an upload that needs more gets a block of its own.
-inline constexpr VkDeviceSize kEtc2StagingBlockBytes = 16 * 1024 * 1024;
-
 // A timeline semaphore and the value an asynchronous decode will signal.
 // `semaphore` is VK_NULL_HANDLE when the decode already finished on the
 // calling thread and the submit needs no extra wait.
@@ -65,12 +61,11 @@ struct Etc2SubmitWait {
 // that is filled by decoding the application's staging bytes when the
 // command buffer is submitted. Every submit decodes again, as a native copy
 // re-reads its source on each execution.
-// Staging ranges live until their command buffer is begun, reset or freed.
+// Staging buffers live until their command buffer is begun, reset or freed.
 // MOCKTAIL_DISABLE_ETC2_EMULATION=1 turns the emulation off.
 class VulkanEtc2Emulation final {
  public:
-  explicit VulkanEtc2Emulation(
-      VkDeviceSize staging_block_bytes = kEtc2StagingBlockBytes);
+  VulkanEtc2Emulation();
   ~VulkanEtc2Emulation();
   VulkanEtc2Emulation(const VulkanEtc2Emulation&) = delete;
   VulkanEtc2Emulation& operator=(const VulkanEtc2Emulation&) = delete;

@@ -22,6 +22,13 @@
 
 #include "mocktail/graphics/text_overlay_frame.h"
 
+// Text overlay compositing costs a second vkQueueSubmit plus a libplacebo
+// dispatch on every present. On a GCN 3 iGPU that is several milliseconds
+// the game never gets back. Set MOCKTAIL_TEXT_OVERLAY=1 to re-enable.
+#ifndef MOCKTAIL_TEXT_OVERLAY
+#define MOCKTAIL_TEXT_OVERLAY 0
+#endif
+
 namespace mocktail {
 namespace graphics {
 namespace {
@@ -947,6 +954,10 @@ VkResult VulkanTextOverlayCompositor::QueuePresent(
   if (impl_ == nullptr || queue == VK_NULL_HANDLE || present_info == nullptr) {
     return fallback(queue, present_info);
   }
+#if !MOCKTAIL_TEXT_OVERLAY
+  impl_->SetOverlayActive(false);
+  return fallback(queue, present_info);
+#endif
   // No compositor work has consumed the application's wait semaphores yet,
   // so an inactive overlay forwards the original present without touching the
   // registry or the imported queue lock. libplacebo only shares VkQueue while

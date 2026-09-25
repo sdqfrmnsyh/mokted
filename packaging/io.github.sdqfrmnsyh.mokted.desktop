@@ -1,0 +1,14 @@
+# Modified by vii from komaruworld/mocktail. See README "About this fork".
+[Desktop Entry]
+Type=Application
+Name=Mokted
+GenericName=Roblox Player
+Comment=Play Roblox on Linux
+Exec=env SDL_VIDEODRIVER=wayland,x11 mokted %u
+Icon=io.github.sdqfrmnsyh.mokted
+StartupWMClass=io.github.sdqfrmnsyh.mokted
+Categories=Game;
+Terminal=false
+MimeType=x-scheme-handler/roblox;x-scheme-handler/roblox-player;
+X-Mocktail-Managed=true
+

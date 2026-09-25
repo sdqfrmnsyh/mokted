@@ -274,8 +274,8 @@ TEST(DiscordRpcTest, RendersCustomTitleAndStateTemplates) {
 
 TEST(DiscordRpcTest, RendersCustomImagesWithPlaceholders) {
   DiscordRpcConfig config;
-  config.images.large = "nightcap_logo";
-  config.images.large_text = "Nightcap";
+  config.images.large = "mokted_logo";
+  config.images.large_text = "Mokted";
   config.images.small = "{place_icon}";
   config.images.small_text = "{place_name}";
   const RobloxExperienceLaunchRequest request = PublicServer();
@@ -285,8 +285,8 @@ TEST(DiscordRpcTest, RendersCustomImagesWithPlaceholders) {
       "Natural Disaster Survival", 1,
       "https://tr.rbxcdn.com/example/512/512/Image/Png");
 
-  EXPECT_EQ(activity.large_image, "nightcap_logo");
-  EXPECT_EQ(activity.large_text, "Nightcap");
+  EXPECT_EQ(activity.large_image, "mokted_logo");
+  EXPECT_EQ(activity.large_text, "Mokted");
   EXPECT_EQ(activity.small_image,
             "https://tr.rbxcdn.com/example/512/512/Image/Png");
   EXPECT_EQ(activity.small_text, "Natural Disaster Survival");
@@ -295,8 +295,8 @@ TEST(DiscordRpcTest, RendersCustomImagesWithPlaceholders) {
 TEST(DiscordRpcTest, EmptyLargeImageHidesBothImages) {
   DiscordRpcConfig config;
   config.images.large = "";
-  config.images.small = "nightcap_logo";
-  config.images.small_text = "Nightcap";
+  config.images.small = "mokted_logo";
+  config.images.small_text = "Mokted";
   const RobloxExperienceLaunchRequest request = PublicServer();
 
   const DiscordRpcActivity activity = BuildDiscordRpcActivity(
@@ -316,7 +316,7 @@ TEST(DiscordRpcTest, DropsUnsafeCustomImages) {
        {"file:///etc/passwd", "http://example.test/a.png", "not a key",
         "{place_name}"}) {
     DiscordRpcConfig config;
-    config.images.large = "nightcap_logo";
+    config.images.large = "mokted_logo";
     config.images.small = unsafe;
     const DiscordRpcActivity small = BuildDiscordRpcActivity(
         config, RobloxExperiencePresencePhase::kPlaying, &request,
@@ -409,11 +409,11 @@ TEST(DiscordRpcTest, PublishesLifecycleActivitiesOverDiscordIpc) {
   config.application_id = "123456789012345678";
   config.show_place_name = false;
   config.join_enabled = false;
-  config.text.title = "Nightcap Test";
+  config.text.title = "Mokted Test";
   config.text.state = "Playing Roblox";
   // Joining has no place yet, so this renders empty and must be left out.
   config.text.joining = "{place_name}";
-  config.images.large = "nightcap_logo";
+  config.images.large = "mokted_logo";
   config.images.small = "linux";
   config.images.small_text = "On Linux";
   DiscordRpcSession session(std::move(config));
@@ -456,9 +456,9 @@ TEST(DiscordRpcTest, PublishesLifecycleActivitiesOverDiscordIpc) {
   EXPECT_NE(activity_payloads[0].find("SET_ACTIVITY"), std::string::npos);
   EXPECT_NE(activity_payloads[0].find("Browsing experiences"),
             std::string::npos);
-  EXPECT_NE(activity_payloads[0].find("\"name\":\"Nightcap Test\""),
+  EXPECT_NE(activity_payloads[0].find("\"name\":\"Mokted Test\""),
             std::string::npos);
-  EXPECT_NE(activity_payloads[0].find("\"large_image\":\"nightcap_logo\""),
+  EXPECT_NE(activity_payloads[0].find("\"large_image\":\"mokted_logo\""),
             std::string::npos);
   EXPECT_NE(activity_payloads[0].find("\"small_image\":\"linux\""),
             std::string::npos);

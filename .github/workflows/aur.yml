@@ -25,22 +25,22 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          package_dir="$GITHUB_WORKSPACE/packaging/aur/nightcap-git"
+          package_dir="$GITHUB_WORKSPACE/packaging/aur/mokted"
           version="$(git describe --tags --abbrev=0 --match='v[0-9]*')"
           version="${version#v}"
           [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]]
-          pkgver="${version}.r$(git rev-list --count HEAD).g$(git rev-parse --short=7 HEAD)"
+          pkgver="${version}"
           sed -i "s/^pkgver=.*/pkgver=${pkgver}/" "$package_dir/PKGBUILD"
 
           docker run --rm \
             --volume "$package_dir:/pkg" \
             archlinux:base-devel bash -Eeuo pipefail -c '
               useradd --create-home builder
-              install -d -o builder -g builder /tmp/nightcap-git
+              install -d -o builder -g builder /tmp/mokted
               install -o builder -g builder -m 0644 \
-                /pkg/PKGBUILD /tmp/nightcap-git/PKGBUILD
+                /pkg/PKGBUILD /tmp/mokted/PKGBUILD
               runuser -u builder -- bash -c \
-                "cd /tmp/nightcap-git && makepkg --printsrcinfo" \
+                "cd /tmp/mokted && makepkg --printsrcinfo" \
                 > /pkg/.SRCINFO
             '
 
@@ -50,7 +50,7 @@ jobs:
       - name: Upload AUR metadata
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Nightcap-AUR
-          path: packaging/aur/nightcap-git/.SRCINFO
+          name: Mokted-AUR
+          path: packaging/aur/mokted/.SRCINFO
           if-no-files-found: error
           retention-days: 14

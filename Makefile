@@ -1,9 +1,9 @@
 # Modified by vii from komaruworld/mocktail. See README "About this fork".
 .DEFAULT_GOAL := all
-.PHONY: all build release debug test apk install register-url-handler release-runtime portable portable-test standalone appimage flatpak run-flatpak run run-smoke run-unlimited run-game run-input run-resize run-network auto-run run-gles run-angle update-roblox update-auto update-auto-launch payload-status payload-rollback support-bundle clean submodules help
+.PHONY: all build release debug test apk install register-url-handler release-runtime portable portable-test standalone appimage flatpak nix-build run-flatpak run run-smoke run-unlimited run-game run-input run-resize run-network auto-run run-gles run-angle update-roblox update-auto update-auto-launch payload-status payload-rollback support-bundle clean submodules help
 
 BUILD_DIR  := build
-BINARY     := $(BUILD_DIR)/mocktail
+BINARY     := $(BUILD_DIR)/mokted
 JOBS       := $(shell nproc)
 BUILD_TYPE ?= Release
 LIBC ?= auto
@@ -13,14 +13,14 @@ CMAKE_SYSROOT ?=
 RELEASE_BUILD_DIR ?=
 PORTABLE_MODE ?= standalone
 PORTABLE_CANONICAL_MODE := $(if $(filter dynamic minimal,$(PORTABLE_MODE)),thin,$(if $(filter full static,$(PORTABLE_MODE)),standalone,$(PORTABLE_MODE)))
-PORTABLE_DIR ?= dist/mocktail-linux-x86_64-glibc-$(PORTABLE_CANONICAL_MODE)
-APPIMAGE ?= dist/Mocktail-x86_64.AppImage
+PORTABLE_DIR ?= dist/mokted-linux-x86_64-glibc-$(PORTABLE_CANONICAL_MODE)
+APPIMAGE ?= dist/Mokted-x86_64.AppImage
 APPIMAGE_FORMAT ?= classic
 ANYLINUX_PACKAGER ?= quick-sharun
 ANYLINUX_APPIMAGETOOL ?= appimagetool
 PREFIX ?= /usr
 FLATPAK_BUILD_DIR ?= build-flatpak
-FLATPAK_MANIFEST ?= packaging/flatpak/io.github.CoderDayton.nightcap.json
+FLATPAK_MANIFEST ?= packaging/flatpak/io.github.sdqfrmnsyh.mokted.json
 FLATPAK_JOBS ?= 4
 
 define build_native_runtime
@@ -56,7 +56,7 @@ install: ## Install an already-built dynamic runtime (use: sudo make install)
 register-url-handler: build ## Select this build for Roblox website links
 	@./scripts/register_url_handler.sh --set-default \
 		--executable "$(abspath $(BINARY))" \
-		--desktop-file "$(abspath packaging/io.github.CoderDayton.nightcap.desktop)"
+		--desktop-file "$(abspath packaging/io.github.sdqfrmnsyh.mokted.desktop)"
 
 test: ## Build and run all unit tests
 	$(call build_native_runtime,Debug,ON)
@@ -91,8 +91,11 @@ flatpak: ## Build and install the local x86-64 Flatpak
 		--manifest "$(FLATPAK_MANIFEST)" \
 		--jobs "$(FLATPAK_JOBS)"
 
+nix-build: ## Build Mokted with the flake's Nix package
+	@nix build .#default
+
 run-flatpak: ## Run the installed Flatpak
-	@flatpak run io.github.CoderDayton.nightcap
+	@flatpak run io.github.sdqfrmnsyh.mokted
 
 run: export MOCKTAIL_AUTO_EXIT_AFTER_PRESENT_MS = 0
 run: build ## Run the native binary interactively until the window is closed
@@ -130,8 +133,8 @@ auto-run: ## Build/run loop with crash summaries
 run-gles: build ## Run strict system EGL/OpenGL ES 3 without Vulkan fallback
 	@$(BINARY) --graphics opengl
 
-run-angle: build ## Run with ANGLE/Vulkan compatibility backend
-	@$(BINARY) --graphics angle-vulkan
+run-angle: ## Run with ANGLE/Vulkan compatibility backend
+	@MOCKTAIL_GRAPHICS_BACKEND=angle-vulkan ./scripts/run_sober.sh
 
 update-roblox: ## Validate and import the current x86_64 Roblox bundle cached by Sober
 	@./scripts/update_roblox_payload.sh

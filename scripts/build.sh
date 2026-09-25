@@ -254,7 +254,7 @@ step "building Mocktail"
 
 cmake --build "${BUILD_DIR}" -j"${JOBS}"
 
-success "Build complete → ${BUILD_DIR}/mocktail"
+success "Build complete → ${BUILD_DIR}/mokted"
 
 if [[ "${RUN_TESTS}" == true ]]; then
   step "running unit tests"
@@ -265,7 +265,7 @@ fi
 echo
 success "Build successful."
 echo "Run:"
-echo -e "  ${CYAN}${BUILD_DIR}/mocktail${RESET}"
+echo -e "  ${CYAN}${BUILD_DIR}/mokted${RESET}"
 if [[ "${EXPLICIT_RUNTIME_OVERRIDE}" == true ]]; then
   info "The explicit runtime library override remains active for this shell."
 elif [[ "${EXTRACT_APK}" == false ]]; then

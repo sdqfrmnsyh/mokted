@@ -32,7 +32,7 @@ ANDROID_TOOLS_ABI=""
 APPIMAGE_FORMAT="${MOCKTAIL_APPIMAGE_FORMAT:-classic}"
 
 readonly -a PROJECT_ARTIFACTS=(
-  mocktail
+  mokted
   mocktail_updater
   mocktail_failure_dialog
   mocktail_webview_helper
@@ -264,7 +264,7 @@ ValidateArtifacts() {
     ValidateElfLibc "${path}" "build artifact ${artifact}"
   done
 
-  TARGET_INTERPRETER="$(ReadElfInterpreter "${BUILD_DIR}/mocktail")"
+  TARGET_INTERPRETER="$(ReadElfInterpreter "${BUILD_DIR}/mokted")"
   [[ -n "${TARGET_INTERPRETER}" ]] ||
     Die "mocktail must be a dynamically linked ${TARGET_LIBC} executable"
 
@@ -719,7 +719,7 @@ WriteAbiManifest() {
 PatchRuntimePaths() {
   local artifact
   if [[ "${MODE}" == thin ]]; then
-    patchelf --set-rpath '$ORIGIN' "${STAGING}/mocktail/bin/mocktail"
+    patchelf --set-rpath '$ORIGIN' "${STAGING}/mocktail/bin/mokted"
     patchelf --remove-rpath \
       "${STAGING}/mocktail/bin/mocktail_webview_helper"
     for artifact in "${PROJECT_ARTIFACTS[@]}"; do
@@ -757,7 +757,7 @@ PatchRuntimePaths() {
   done < <(find "${STAGING}/mocktail" -type f \
     \( -perm -0100 -o -name '*.so' -o -name '*.so.*' \) -print0)
   patchelf --set-rpath '$ORIGIN:$ORIGIN/../lib' \
-    "${STAGING}/mocktail/bin/mocktail" \
+    "${STAGING}/mocktail/bin/mokted" \
     "${STAGING}/mocktail/bin/mocktail_failure_dialog" \
     "${STAGING}/mocktail/bin/mocktail_webview_helper"
 }
@@ -808,16 +808,16 @@ VerifyBundle() {
   done < <(find "${STAGING}/mocktail" -type f \
     \( -perm -0100 -o -name '*.so' -o -name '*.so.*' \) -print0)
 
-  dynamic_path="$(LC_ALL=C readelf -d "${STAGING}/mocktail/bin/mocktail" |
+  dynamic_path="$(LC_ALL=C readelf -d "${STAGING}/mocktail/bin/mokted" |
     sed -n 's/.*\(RPATH\|RUNPATH\).*\[\(.*\)\].*/\2/p')"
   [[ "${dynamic_path}" == "${expected_dynamic_path}" ]] ||
     Die "unexpected packaged mocktail RUNPATH: ${dynamic_path}"
 
   packaged_interpreter="$(ReadElfInterpreter \
-    "${STAGING}/mocktail/bin/mocktail")"
+    "${STAGING}/mocktail/bin/mokted")"
   [[ "${packaged_interpreter}" == "${TARGET_INTERPRETER}" ]] ||
     Die "packaged mocktail interpreter changed unexpectedly"
-  packaged_libc="$(DetectElfLibc "${STAGING}/mocktail/bin/mocktail")"
+  packaged_libc="$(DetectElfLibc "${STAGING}/mocktail/bin/mokted")"
   [[ "${packaged_libc}" == "${TARGET_LIBC}" ]] ||
     Die "packaged mocktail libc ABI changed unexpectedly"
   grep -Fxq 'schema=2' "${STAGING}/mocktail/metadata/ABI.txt" ||
@@ -921,25 +921,25 @@ BuildAppImage() {
   ln -s "share/mocktail-bundle/run.sh" "${APPDIR}/usr/mocktail"
   install -m 0755 -- "${PROJECT_ROOT}/packaging/AppRun" "${APPDIR}/AppRun"
   install -m 0644 -- \
-    "${PROJECT_ROOT}/packaging/io.github.CoderDayton.nightcap.desktop" \
-    "${APPDIR}/io.github.CoderDayton.nightcap.desktop"
+    "${PROJECT_ROOT}/packaging/io.github.sdqfrmnsyh.mokted.desktop" \
+    "${APPDIR}/io.github.sdqfrmnsyh.mokted.desktop"
   install -m 0644 -- \
-    "${PROJECT_ROOT}/packaging/io.github.CoderDayton.nightcap.desktop" \
-    "${APPDIR}/usr/share/applications/io.github.CoderDayton.nightcap.desktop"
+    "${PROJECT_ROOT}/packaging/io.github.sdqfrmnsyh.mokted.desktop" \
+    "${APPDIR}/usr/share/applications/io.github.sdqfrmnsyh.mokted.desktop"
   install -m 0644 -- \
-    "${PROJECT_ROOT}/packaging/io.github.CoderDayton.nightcap.svg" \
-    "${APPDIR}/io.github.CoderDayton.nightcap.svg"
+    "${PROJECT_ROOT}/packaging/io.github.sdqfrmnsyh.mokted.svg" \
+    "${APPDIR}/io.github.sdqfrmnsyh.mokted.svg"
   install -m 0644 -- \
-    "${PROJECT_ROOT}/packaging/io.github.CoderDayton.nightcap.svg" \
-    "${APPDIR}/usr/share/icons/hicolor/scalable/apps/io.github.CoderDayton.nightcap.svg"
+    "${PROJECT_ROOT}/packaging/io.github.sdqfrmnsyh.mokted.svg" \
+    "${APPDIR}/usr/share/icons/hicolor/scalable/apps/io.github.sdqfrmnsyh.mokted.svg"
   for icon_path in \
-      "${PROJECT_ROOT}"/packaging/icons/hicolor/*x*/apps/io.github.CoderDayton.nightcap.png; do
+      "${PROJECT_ROOT}"/packaging/icons/hicolor/*x*/apps/io.github.sdqfrmnsyh.mokted.png; do
     [[ -f "${icon_path}" ]] || Die "hicolor icon set is incomplete"
     icon_relative_path="${icon_path#"${PROJECT_ROOT}/packaging/icons/hicolor/"}"
     install -D -m 0644 -- "${icon_path}" \
       "${APPDIR}/usr/share/icons/hicolor/${icon_relative_path}"
   done
-  ln -s io.github.CoderDayton.nightcap.svg "${APPDIR}/.DirIcon"
+  ln -s io.github.sdqfrmnsyh.mokted.svg "${APPDIR}/.DirIcon"
   mkdir -p -- "$(dirname -- "${APPIMAGE_OUTPUT}")"
   ARCH=x86_64 appimagetool "${APPDIR}" "${APPIMAGE_OUTPUT}"
   rm -rf -- "${APPDIR}"

@@ -9,14 +9,14 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 readonly PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd -P)"
 
 BUILD_DIR="${PROJECT_ROOT}/build-flatpak"
-MANIFEST="${PROJECT_ROOT}/packaging/flatpak/io.github.CoderDayton.nightcap.json"
+MANIFEST="${PROJECT_ROOT}/packaging/flatpak/io.github.sdqfrmnsyh.mokted.json"
 JOBS="${MOCKTAIL_FLATPAK_JOBS:-4}"
 
 Usage() {
   cat <<'EOF'
 Usage: scripts/build_flatpak.sh [OPTIONS]
 
-Build and install Mocktail as a per-user Flatpak for the host architecture.
+Build and install Mokted as a per-user x86-64 Flatpak.
 
 Options:
   --build-dir DIR  Builder output directory (default: build-flatpak).
@@ -27,7 +27,7 @@ EOF
 }
 
 Die() {
-  printf 'mocktail-flatpak: %s\n' "$*" >&2
+  printf 'mokted-flatpak: %s\n' "$*" >&2
   exit 1
 }
 
@@ -93,11 +93,8 @@ done
 [[ "${JOBS}" =~ ^[1-9][0-9]*$ && "${JOBS}" -le 256 ]] ||
   Die "--jobs must be an integer between 1 and 256"
 
-HOST_ARCH="$(uname -m)"
-case "${HOST_ARCH}" in
-  x86_64|aarch64) ;;
-  *) Die "Flatpak builds require an x86_64 or aarch64 Linux host" ;;
-esac
+[[ "$(uname -m)" == x86_64 ]] ||
+  Die "the Roblox payload and Flatpak manifest currently require x86-64"
 command -v flatpak >/dev/null 2>&1 || Die "flatpak is required"
 
 MANIFEST="$(realpath -e -- "${MANIFEST}")" ||
@@ -105,13 +102,13 @@ MANIFEST="$(realpath -e -- "${MANIFEST}")" ||
 [[ -f "${MANIFEST}" && ! -L "${MANIFEST}" ]] ||
   Die "manifest must be a regular non-symlink file"
 [[ "${MANIFEST}" == "${PROJECT_ROOT}/"* ]] ||
-  Die "manifest must be inside the Mocktail source tree"
+  Die "manifest must be inside the Mokted source tree"
 
 BUILD_DIR="$(realpath -m -- "${BUILD_DIR}")" ||
   Die "cannot resolve build directory: ${BUILD_DIR}"
 [[ "${BUILD_DIR}" == "${PROJECT_ROOT}/"* &&
    "${BUILD_DIR}" != "${PROJECT_ROOT}" ]] ||
-  Die "build directory must be a child of the Mocktail source tree"
+  Die "build directory must be a child of the Mokted source tree"
 
 builder=()
 if command -v flatpak-builder >/dev/null 2>&1; then
@@ -126,7 +123,7 @@ CleanupStaleBuilderMounts
 
 cd -- "${PROJECT_ROOT}"
 exec "${builder[@]}" \
-  --arch="${HOST_ARCH}" \
+  --arch=x86_64 \
   --jobs="${JOBS}" \
   --force-clean \
   --install-deps-from=flathub \

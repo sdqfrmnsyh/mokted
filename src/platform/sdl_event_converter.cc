@@ -74,11 +74,16 @@ bool ConvertSdlEvent(SDL_Window* window, const SDL_Event& source,
           SDL_GetWindowRelativeMouseMode(window)};
       return true;
     case SDL_EVENT_MOUSE_WHEEL: {
-      // SDL already applies the host's natural-scrolling preference to x/y.
-      // Undoing SDL_MOUSEWHEEL_FLIPPED here would ignore the OS setting.
-      destination->payload = MouseWheelEvent{
-          source.wheel.x, source.wheel.y, source.wheel.mouse_x,
-          source.wheel.mouse_y, SDL_GetWindowRelativeMouseMode(window)};
+      float delta_x = source.wheel.x;
+      float delta_y = source.wheel.y;
+      if (source.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
+        delta_x = -delta_x;
+        delta_y = -delta_y;
+      }
+      destination->payload =
+          MouseWheelEvent{delta_x, delta_y, source.wheel.mouse_x,
+                          source.wheel.mouse_y,
+                          SDL_GetWindowRelativeMouseMode(window)};
       return true;
     }
     case SDL_EVENT_FINGER_DOWN:
