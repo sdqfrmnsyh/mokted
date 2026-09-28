@@ -59,6 +59,7 @@ Everything else works the same as Mokted. See the upstream
 Edit `~/.config/mocktail/config.yaml`:
 
 ```yaml
+# Modified by vii from komaruworld/mocktail. See README "About this fork".
 # Mocktail configuration.
 # The file is created once with mode 0600. Mocktail never replaces your edits.
 
@@ -68,7 +69,7 @@ version: 1
 # One-line device preset. Short aliases pc, mobile, and console are accepted.
 # Presets: pc-windows-11, mobile-pixel-7, console-ps5.
 # Use the mapping below for a custom profile.
-device: mobile-pixel-7
+device: pc-windows-11
 
 # Detailed alternative (replace the scalar device line above):
 # device:
@@ -95,7 +96,7 @@ runtime:
 appearance:
   # String (default: roblox): use Roblox's saved account theme. Supported
   # overrides: dark, light, or system (follow the desktop color scheme).
-  theme: dark
+  theme: roblox
 
 graphics:
   # String (default: direct-vulkan): graphics backend. Use opengl on hardware
@@ -106,8 +107,10 @@ graphics:
   # (or use -1) to let Roblox Basic Settings own the cap. Supported overrides:
   # display, unlimited, or any positive integer; fixed values are forwarded to
   # DFIntTaskSchedulerTargetFps without a whitelist.
-  frame_rate_limit: 30
-  # Optional presentation synchronization override: auto, on, or off.
+  frame_rate_limit: display
+  # Optional presentation synchronization override: auto, on, or off. auto
+  # presents through the lowest-latency synchronized mode the driver offers
+  # unless frame_rate_limit is unlimited.
   vsync: on
   # ETC2: leave auto for GPU detection (default), or force "native"
   # if the detection is wrong and your GPU actually supports ETC2.
@@ -136,41 +139,71 @@ audio:
   # String (default: default): input device name, `id:<number>` printed during
   # startup, or `disabled`. IDs disambiguate duplicate names but may change
   # between boots; prefer the exact device name when it is unique.
-  input_device: disabled
+  input_device: default
+
+input:
+  # Boolean (default: false): send mouse look deltas in the host's own units.
+  # They are otherwise scaled by the window's pixel density divided by the
+  # desktop display scale, which cancels to 1.0 unless fractional scaling makes
+  # the two disagree. Turn this on when first-person aiming feels too slow or
+  # too fast under fractional scaling. The pointer position is unaffected.
+  raw_mouse: false
 
 integrations:
+  fleasion:
+    # Boolean (default: false): trust Fleasion's CA without editing Roblox files.
+    enabled: false
+    # String: match Fleasion's routing mode: env or hosts.
+    # proxy_mode: env
+    # Integer: Fleasion's local HTTP proxy port in env mode.
+    # proxy_port: 58443
+    # Optional absolute public CA path. Default: $XDG_CONFIG_HOME/Fleasion/proxy_ca/ca.crt
+    # or ~/.config/Fleasion/proxy_ca/ca.crt. Never select ca.key.
+    # ca_certificate: /home/user/.config/Fleasion/proxy_ca/ca.crt
   discord_rpc:
-    # Boolean (default: false): publish Mocktail activity to Discord Desktop.
+    # Boolean (default: true): publish Mokted activity to Discord Desktop.
     # This never signs in to Discord and never reads an account token.
     enabled: false
-    # Boolean (default: false): show the current Roblox experience name.
+    # Boolean (default: true): show the current Roblox experience name.
     show_place_name: false
-    # Boolean (default: false): show how long the current session has run.
+    # Boolean (default: true): show how long the current session has run.
     show_elapsed_time: false
     join:
-      # Boolean (default: false): let friends open the current experience. When
+      # Boolean (default: true): let friends open the current experience. When
       # Roblox provides a public server ID, the button targets that server.
       enabled: false
-      # Boolean (default: false): never expose private or reserved joins.
+      # Boolean (default: true): never expose private or reserved joins.
       public_servers_only: false
       # button_label: Join Server
     # English defaults. Uncomment only the lines you want to customize.
+    # Text and image fields accept {place_name}, {place_icon}, and
+    # {creator_name}. A field that expands an empty placeholder is left out,
+    # and a "" title shows the app name.
+    # title, state, and the images fields may be "" to hide them.
     # text:
     #   browsing: Browsing experiences
     #   joining: Joining an experience
-    #   playing: "{place_name}"
-    #   state: Playing Roblox
+    #   playing: "Playing {place_name}"
+    #   state: "by {creator_name}"
     #   unknown_place: Unknown experience
+    #   title: Roblox
+    # Images take an https:// URL, or an asset key uploaded to application_id.
+    # large: "" hides both images; the small image needs a large one.
+    # images:
+    #   large: "{place_icon}"
+    #   large_text: "{place_name}"
+    #   small: roblox_small
+    #   small_text: Roblox
     # Advanced: overrides the application bundled by the package maintainer.
     # application_id: 123456789012345678
 
 window:
   # Integer (default: 1280): initial window width in logical desktop units.
-  width: 1
+  width: 1280
   # Integer (default: 720): initial window height in logical desktop units.
-  height: 1
+  height: 720
   # String (default: Roblox): window title.
-  title: Mokted
+  title: Roblox
   # Boolean (default: false): render at physical display-pixel density instead
   # of the logical desktop resolution. Enable only for sharper high-DPI output.
   high_dpi: false
@@ -187,9 +220,9 @@ network:
   # Optional fixed HTTP proxy. Uncomment both values together. The host must
   # not contain a scheme such as http://.
   # String (optional, default: disabled): proxy host name or IP address.
-  # proxy_host: disabled
+  # proxy_host: 127.0.0.1
   # Integer (optional, default: disabled): proxy TCP port from 1 to 65535.
-  # proxy_port: disabled
+  # proxy_port: 8080
   # Absolute path (optional): custom PEM CA bundle. Mocktail reads this file
   # directly and does not replace it during Roblox payload updates.
   # ca_bundle: /home/user/.config/mocktail/cacert.pem
