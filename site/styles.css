@@ -1,94 +1,167 @@
 /* Modified by vii from komaruworld/mocktail. See README "About this fork". */
+
 :root {
-  font: 17px/1.55 system-ui, sans-serif;
-  color-scheme: dark;
+    font: 17px/1.55 system-ui, sans-serif;
+    color-scheme: dark;
+    --cyan: #58cefa;
+    --pink: #f5a9b8;
+    --dark-bg: #0a0e27;
+    --darker-bg: #05070f;
 }
 
 body {
-  margin: 0;
-  background: #14122b;
-  color: #ece8ff;
+    margin: 0;
+    background: var(--dark-bg);
+    color: #f0f2f7;
+    overflow-x: hidden;
 }
 
 main {
-  max-width: 680px;
-  margin: 12vh auto;
-  padding: 32px;
+    max-width: 680px;
+    margin: 12vh auto;
+    padding: 32px;
 }
 
 img {
-  width: 88px;
-  height: 88px;
+    width: 88px;
+    height: 88px;
+    filter: drop-shadow(0 0 20px rgba(88, 206, 250, 0.3));
+    transition: filter 0.3s ease;
+}
+
+img:hover {
+    filter: drop-shadow(0 0 30px rgba(88, 206, 250, 0.5));
 }
 
 h1 {
-  margin: .2rem 0;
-  font-size: clamp(2.5rem, 8vw, 4.5rem);
+    margin: .2rem 0;
+    font-size: clamp(2.5rem, 8vw, 4.5rem);
+    background: linear-gradient(135deg, var(--cyan), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 800;
 }
 
 h2 {
-  margin: 32px 0 0;
-  font-size: 1.15rem;
+    margin: 32px 0 0;
+    font-size: 1.15rem;
+    color: var(--cyan);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 p,
 li {
-  color: #b3aad6;
+    color: #d1d5e0;
 }
 
 ul {
-  padding-left: 1.2rem;
+    padding-left: 1.2rem;
 }
 
 a.button {
-  display: inline-block;
-  margin: 16px 8px 16px 0;
-  padding: 12px 18px;
-  border-radius: 9px;
-  background: #6c4fd1;
-  color: white;
-  font-weight: 700;
-  text-decoration: none;
+    display: inline-block;
+    margin: 16px 8px 16px 0;
+    padding: 12px 18px;
+    border-radius: 9px;
+    background: var(--cyan);
+    color: var(--darker-bg);
+    font-weight: 700;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(88, 206, 250, 0.3);
+    border: 2px solid var(--cyan);
+}
+
+a.button:hover {
+    background: transparent;
+    color: var(--cyan);
+    box-shadow: 0 4px 20px rgba(88, 206, 250, 0.6);
+    transform: translateY(-2px);
 }
 
 a.secondary {
-  background: #2f2a6b;
+    background: var(--pink);
+    color: var(--darker-bg);
+    box-shadow: 0 4px 15px rgba(245, 169, 184, 0.3);
+    border-color: var(--pink);
+}
+
+a.secondary:hover {
+    background: transparent;
+    color: var(--pink);
+    box-shadow: 0 4px 20px rgba(245, 169, 184, 0.6);
 }
 
 .commands {
-  margin-top: 10px;
+    margin-top: 10px;
 }
 
 .commands p,
 .download-label {
-  margin: 14px 0 5px;
-  color: #ece8ff;
-  font-size: .82rem;
-  font-weight: 700;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+    margin: 14px 0 5px;
+    color: var(--cyan);
+    font-size: .82rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
 }
 
 code {
-  display: block;
-  padding: 14px;
-  overflow-wrap: anywhere;
-  border: 1px solid #3a3470;
-  border-radius: 6px;
-  background: #1d1a3d;
-  white-space: pre-wrap;
+    display: block;
+    padding: 14px;
+    overflow-wrap: anywhere;
+    border: 1px solid rgba(88, 206, 250, 0.2);
+    border-radius: 6px;
+    background: var(--darker-bg);
+    white-space: pre-wrap;
+    color: var(--cyan);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9rem;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .links {
-  margin: 10px 0 14px;
+    margin: 10px 0 14px;
 }
 
 .links a {
-  display: inline-block;
-  margin: 0 14px 6px 0;
-  color: #a78bfa;
+    display: inline-block;
+    margin: 0 14px 6px 0;
+    color: var(--cyan);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.links a::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: var(--pink);
+    transition: width 0.3s ease;
+}
+
+.links a:hover::after {
+    width: 100%;
+}
+
+.links a:hover {
+    color: var(--pink);
 }
 
 a.source {
-  color: #a78bfa;
+    color: var(--pink);
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+a.source:hover {
+    color: var(--cyan);
 }
