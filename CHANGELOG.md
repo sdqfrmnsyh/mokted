@@ -12,6 +12,7 @@ All important changes to the Mokted project will be documented in this dossier.
 - **Text Overlay**: Disables *libplacebo text overlay compositing* by default to save time *dispatch* GPU (can be reactivated with `MOCKTAIL_TEXT_OVERLAY=1`).
 - **Discord RPC**: Disables *Discord Rich Presence* by default to prevent *socket polling* and eliminates *worker thread* 16 MB (can be activated with `MOCKTAIL_DISCORD_RPC_ENABLED=1`).
 - **Gamepad**: Disables *joystick*/SDL gamepad enumeration by default; polling is only done if `MOCKTAIL_GAMEPAD=1` (keyboard and mouse are not affected).
+- **Exclusive Fullscreen**: Supports exclusive fullscreen mode (`exclusive_fullscreen: true`) to bypass compositor and use native display modes for reduced input latency on stable displays. Defaults to borderless fullscreen for better compatibility and safety.
 
 ### Identity & Configuration Changes
 - Change the application identity to Mokted (is an independent *fork* of komaruworld/mocktail and CoderDayton/nightcap).

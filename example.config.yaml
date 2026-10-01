@@ -148,8 +148,11 @@ window:
   high_dpi: false
 
 display:
+  # Boolean (default: false): enable exclusive fullscreen mode.
   # true: bypass compositor (X11), use native display mode (eg 1024x768).
-  # false: borderless fullscreen (default, safer).
+  # This may reduce input latency but can cause display mode switching issues
+  # on some systems. Recommended for competitive gameplay on stable displays.
+  # false: borderless fullscreen (default, safer, better compatibility).
   exclusive_fullscreen: false
   
 network:

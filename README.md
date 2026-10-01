@@ -44,6 +44,10 @@ if you run Mokted on a stronger machine.
   metadata fetch, no 16 MB worker thread unless you ask for it.
 - **Gamepad polling opt-in.** SDL joystick enumeration is skipped unless
   `MOCKTAIL_GAMEPAD=1`. Keyboard and mouse are unaffected.
+- **Exclusive fullscreen mode support.** Borderless fullscreen is the default
+  for better compatibility. Enable `exclusive_fullscreen: true` in config to
+  bypass the compositor and use native display modes for reduced input latency
+  on supported systems.
 
 **Measured on A4-9125 + Radeon R3, Roblox 2.736, 960×540, graphics quality 1:
 Mokted median 21 FPS (min 7.7) → Mokted median 24 FPS (min 19.5).** The
@@ -209,8 +213,11 @@ window:
   high_dpi: false
 
 display:
+  # Boolean (default: false): enable exclusive fullscreen mode.
   # true: bypass compositor (X11), use native display mode (eg 1024x768).
-  # false: borderless fullscreen (default, safer).
+  # This may reduce input latency but can cause display mode switching issues
+  # on some systems. Recommended for competitive gameplay on stable displays.
+  # false: borderless fullscreen (default, safer, better compatibility).
   exclusive_fullscreen: false
   
 network:
