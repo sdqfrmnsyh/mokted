@@ -33,11 +33,13 @@ cd mokted &amp;&amp; make build
   </div>
   <h2>What's different</h2>
   <ul>
-    <li>Lower input lag. Frames are shown as soon as they are ready.</li>
-    <li>Sharper textures, with your own PNG overrides if you want them.</li>
-    <li>ETC2 textures render correctly on desktop GPUs.</li>
-    <li>No more error 319 kicks after joining a server.</li>
-    <li>Roblox sees your real RAM and screen size.</li>
+    <li>Built for low-end x86_64 hardware, with tuning specifically aimed at Excavator-class CPUs.</li>
+    <li>Removes the busy-wait engine fallback so the render thread keeps its core instead of burning CPU.</li>
+    <li>Runs the input pump at 120 Hz instead of 240 Hz, cutting polling overhead without hurting feel.</li>
+    <li>Caps the scheduler pool to cores minus one to avoid oversubscription and context-switch churn.</li>
+    <li>Disables text overlay compositing by default to avoid extra Vulkan submit and dispatch costs.</li>
+    <li>Turns off Discord Rich Presence and gamepad polling unless you explicitly enable them.</li>
+    <li>Adds exclusive fullscreen support while keeping borderless fullscreen as the safer default.</li>
   </ul>
   <h2>Direct downloads</h2>
   <p>Prebuilt builds for Linux x86_64.</p>
