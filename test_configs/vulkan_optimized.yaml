@@ -1,0 +1,57 @@
+version: 1
+device: pc-windows-11
+
+runtime:
+  headless: false
+
+appearance:
+  theme: dark
+
+graphics:
+  backend: direct-vulkan
+  frame_rate_limit: display
+  vsync: auto
+  etc2_emulation: auto
+
+performance:
+  multithreaded_rendering: true
+  physics_worker_mode: throughput
+  memory_limit_mb: 0
+  gamemode: on
+
+audio:
+  output_device: default
+  input_device: default
+
+input:
+  raw_mouse: false
+
+integrations:
+  fleasion:
+    enabled: false
+  discord_rpc:
+    enabled: false
+
+window:
+  width: 1280
+  height: 720
+  title: "Roblox (Vulkan Optimized)"
+  high_dpi: false
+
+display:
+  exclusive_fullscreen: false
+
+network:
+  use_system_proxy: false
+
+updates:
+  automatic: true
+  source: apk-pure
+  launch_after_update: false
+
+environment_overrides:
+  MOCKTAIL_SMALL_TEXTURE_UPSCALE: "1"
+  MOCKTAIL_ENGINE_PUMP_REST: "sleep"
+  MOCKTAIL_GRAPHICS_QUALITY: "auto"
+  MOCKTAIL_FORCE_1X1_TEXTURES: "1"
+  MOCKTAIL_DISABLE_TELEMETRY: "1"

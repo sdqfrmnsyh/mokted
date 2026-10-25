@@ -21,8 +21,9 @@ A9-9425, E2-9000, FX-8800P). On these CPUs the default Mokted build leaves
 
 ## What Mokted changes
 
-Every change is opt-in at the config or environment level, so nothing breaks
-if you run Mokted on a stronger machine.
+Most changes are hardcoded defaults tuned for 2C/2T APUs. Each one can still be
+overridden from `config.yaml` or an environment variable, so nothing breaks if
+you run Mokted on a stronger machine.
 
 - **Build tuned for Excavator.** `-march=bdver4 -mtune=bdver4 -O3 -flto=auto`
   plus `-fno-plt -fno-semantic-interposition -fomit-frame-pointer`. On A4-9125
@@ -36,10 +37,11 @@ if you run Mokted on a stronger machine.
 - **Scheduler pool capped at cores−1.** On a 2C/2T part Mokted oversubscribes
   the Roblox task scheduler with 2+ workers, causing context-switch churn.
   Mokted caps it at `physical_cores − 1`.
-- **Text overlay compositing disabled by default.** The libplacebo text
+- **Text overlay compositing disabled at build time.** The libplacebo text
   overlay path costs a second `vkQueueSubmit` plus a full dispatch on every
-  present. On GCN 3 that is several milliseconds per frame. Set
-  `MOCKTAIL_TEXT_OVERLAY=1` to re-enable.
+  present. On GCN 3 that is several milliseconds per frame. It is compiled out
+  by default; rebuild with `-DMOCKTAIL_TEXT_OVERLAY=1` to restore it. There is
+  no runtime toggle.
 - **Discord Rich Presence off by default.** No socket polling, no Roblox API
   metadata fetch, no 16 MB worker thread unless you ask for it.
 - **Gamepad polling opt-in.** SDL joystick enumeration is skipped unless
@@ -50,219 +52,93 @@ if you run Mokted on a stronger machine.
   on supported systems.
 
 **Measured on A4-9125 + Radeon R3, Roblox 2.736, 960×540, graphics quality 1:
-Mokted median 21 FPS (min 7.7) → Mokted median 24 FPS (min 19.5).** The
+stock Mocktail median 21 FPS (min 7.7) → Mokted median 24 FPS (min 19.5).** The
 minimum is what actually matters in gameplay, and it more than doubles.
 
-Everything else works the same as Mokted. See the upstream
+Everything else works the same as stock Mocktail. See the upstream
 [roadmap](docs/ROADMAP.md) for what is coming next, the
 [changelog](CHANGELOG.md) for what each release changed, and
 [performance](docs/PERFORMANCE.md) for CPU load and the knobs that change them.
 
-## Recommended settings for low-end hardware
+## Recommended settings for low-end hardware (AMD A4-9125 / 2C2T)
 
-Edit `~/.config/mocktail/config.yaml`:
+**Every ultra-low-end optimization is hardcoded as a default in the binary.**
+A plain `mokted` launch applies them already, with no config file and no
+environment variables. The generated `~/.config/mocktail/config.yaml` exists
+only to override those defaults, and it is created with the same values written
+out. The fully annotated reference is [`example.config.yaml`](example.config.yaml).
 
-```yaml
-# Modified by vii from komaruworld/mocktail. See README "About this fork".
-# Mocktail configuration.
-# The file is created once with mode 0600. Mocktail never replaces your edits.
+The defaults that matter on a 2C/2T APU with a shared-memory iGPU:
 
-# Integer: configuration schema version. Only version 1 is supported.
-version: 1
+| Key | Default | Why |
+|---|---|---|
+| `graphics.backend` | `direct-vulkan` | Fastest path on AMD/Intel with a working Vulkan driver. |
+| `graphics.frame_rate_limit` | `-1` | No cap: Roblox's own Basic Settings owns the limit. |
+| `graphics.vsync` | `auto` | Lowest-latency synchronized present mode unless the cap is `unlimited`. |
+| `graphics.etc2_emulation` | `auto` | Emulate ETC2 only when the GPU cannot decode it. `off` disables it entirely. |
+| `performance.multithreaded_rendering` | `true` | Size scheduler and render queues from the physical cores. |
+| `performance.physics_worker_mode` | `latency` | Coalesce midphase work; capped at 1 worker on 2C/2T. |
+| `performance.memory_limit_mb` | `3072` | RAM cap tuned for 7–8 GiB systems. `0` disables it. |
+| `performance.gamemode` | `on` | Keep Feral GameMode's governor and priority boost. |
+| `integrations.discord_rpc.enabled` | `false` | No socket polling and no 16 MB worker thread. |
 
-# One-line device preset. Short aliases pc, mobile, and console are accepted.
-# Presets: pc-windows-11, mobile-pixel-7, console-ps5.
-# Use the mapping below for a custom profile.
-device: pc-windows-11
+### Hardcoded rendering and quality FFlags
 
-# Detailed alternative (replace the scalar device line above):
-# device:
-#   type: mobile
-#   platform: Android
-#   name: Google Pixel 9 Pro
-#   manufacturer: Google
-#   model: Pixel 9 Pro
-#   brand: google
-#   code: komodo
-#   sku: pixel-9-pro
-#   soc_model: Google Tensor G4
-#   touch: true
-#   mouse: false
-#   keyboard: false
+The rendering client settings (FFlags) are applied separately from
+`config.yaml` and cannot be turned off from the config file. On every launch
+Mokted forces:
 
-runtime:
-  # Boolean (default: false): start without a visible SDL window.
-  headless: false
-  # String (optional): use a specific x86_64 libroblox.so instead of the
-  # active verified payload.
-  # roblox_library: /absolute/path/to/libroblox.so
+- **Textures:** lowest quality (`DFIntTextureQualityOverride=1`, FRM quality
+  level 1), mip bias 5 (about 1/1024 the size), a 16 MiB texture budget, and
+  1×1 UI textures.
+- **Lighting:** voxel/forward only. Future Is Bright, global illumination,
+  SSAO, SSR, shadows, bloom, depth of field, HDR and tone mapping are off.
+- **Culling:** frustum, portal, distance, Hi-Z and occlusion queries all on.
+- **Effects:** particles capped at 50 with 4 emitters, grass off, all avatar
+  and accessory features off.
+- **Scheduler:** thread minimum 0, async minimum 1, auto limit 1 (a single
+  worker on 2C/2T).
+- **Physics:** 2 substeps, 2 constraint iterations, midphase batch 128, and
+  throttle when paused, hidden or unfocused.
+- **Memory:** Luau incremental GC with `StepMul=400`, `GoalRatio=400`,
+  `GoalCore=150`.
+- **Audio:** 4 output channels and a 16384-sample DSP buffer.
+- **Telemetry:** analytics, crash reporting and every tracking flag disabled.
 
-appearance:
-  # String (default: roblox): use Roblox's saved account theme. Supported
-  # overrides: dark, light, or system (follow the desktop color scheme).
-  theme: roblox
+To override a single FFlag, put it in
+[`fflags.json`](#fflag-overrides); values there win over the built-in ones.
+See [docs/PERFORMANCE.md](docs/PERFORMANCE.md) for the full tables.
 
-graphics:
-  # String (default: direct-vulkan): graphics backend. Use opengl on hardware
-  # without a working Vulkan driver; OpenGL ES 3.0 or newer is required.
-  # Recommended values: direct-vulkan, opengl, system, angle-vulkan.
-  backend: direct-vulkan
-  # Optional string or integer: Mocktail frame-rate override. Leave commented
-  # (or use -1) to let Roblox Basic Settings own the cap. Supported overrides:
-  # display, unlimited, or any positive integer; fixed values are forwarded to
-  # DFIntTaskSchedulerTargetFps without a whitelist.
-  frame_rate_limit: display
-  # Optional presentation synchronization override: auto, on, or off. auto
-  # presents through the lowest-latency synchronized mode the driver offers
-  # unless frame_rate_limit is unlimited.
-  vsync: on
-  # ETC2: leave auto for GPU detection (default), or force "native"
-  # if the detection is wrong and your GPU actually supports ETC2.
-  etc2_emulation: auto
+### Environment variables
 
-performance:
-  # Boolean (default: false): size Roblox scheduler/render queues from every
-  # physical CPU core. A place's Lua/main thread can still remain serial.
-  multithreaded_rendering: false
-  # String (default: throughput): `throughput` makes every physical core
-  # available to Roblox worker pools; `latency` preserves Roblox-managed pool
-  # sizes and coalesces midphase work. Supported: auto, latency, throughput.
-  physics_worker_mode: auto
-  # Integer MiB (default: 0): hard RAM cap for the Mocktail process tree.
-  # 0 disables the cap. cgroup v2 also disables swap; other Linux systems use
-  # an RSS+swap watchdog. 6144 is a conservative starting point for 32 GiB RAM.
-  memory_limit_mb: 2048
-  # String (default: auto): request Feral GameMode when its host daemon and
-  # client library are available. Supported values: auto, on, off.
-  gamemode: on
-
-audio:
-  # String (default: default): `default` follows the host system output.
-  # To pin output, copy an exact SDL device name printed during startup.
-  output_device: default
-  # String (default: default): input device name, `id:<number>` printed during
-  # startup, or `disabled`. IDs disambiguate duplicate names but may change
-  # between boots; prefer the exact device name when it is unique.
-  input_device: default
-
-input:
-  # Boolean (default: false): send mouse look deltas in the host's own units.
-  # They are otherwise scaled by the window's pixel density divided by the
-  # desktop display scale, which cancels to 1.0 unless fractional scaling makes
-  # the two disagree. Turn this on when first-person aiming feels too slow or
-  # too fast under fractional scaling. The pointer position is unaffected.
-  raw_mouse: false
-
-integrations:
-  fleasion:
-    # Boolean (default: false): trust Fleasion's CA without editing Roblox files.
-    enabled: false
-    # String: match Fleasion's routing mode: env or hosts.
-    # proxy_mode: env
-    # Integer: Fleasion's local HTTP proxy port in env mode.
-    # proxy_port: 58443
-    # Optional absolute public CA path. Default: $XDG_CONFIG_HOME/Fleasion/proxy_ca/ca.crt
-    # or ~/.config/Fleasion/proxy_ca/ca.crt. Never select ca.key.
-    # ca_certificate: /home/user/.config/Fleasion/proxy_ca/ca.crt
-  discord_rpc:
-    # Boolean (default: true): publish Mokted activity to Discord Desktop.
-    # This never signs in to Discord and never reads an account token.
-    enabled: false
-    # Boolean (default: true): show the current Roblox experience name.
-    show_place_name: false
-    # Boolean (default: true): show how long the current session has run.
-    show_elapsed_time: false
-    join:
-      # Boolean (default: true): let friends open the current experience. When
-      # Roblox provides a public server ID, the button targets that server.
-      enabled: false
-      # Boolean (default: true): never expose private or reserved joins.
-      public_servers_only: false
-      # button_label: Join Server
-    # English defaults. Uncomment only the lines you want to customize.
-    # Text and image fields accept {place_name}, {place_icon}, and
-    # {creator_name}. A field that expands an empty placeholder is left out,
-    # and a "" title shows the app name.
-    # title, state, and the images fields may be "" to hide them.
-    # text:
-    #   browsing: Browsing experiences
-    #   joining: Joining an experience
-    #   playing: "Playing {place_name}"
-    #   state: "by {creator_name}"
-    #   unknown_place: Unknown experience
-    #   title: Roblox
-    # Images take an https:// URL, or an asset key uploaded to application_id.
-    # large: "" hides both images; the small image needs a large one.
-    # images:
-    #   large: "{place_icon}"
-    #   large_text: "{place_name}"
-    #   small: roblox_small
-    #   small_text: Roblox
-    # Advanced: overrides the application bundled by the package maintainer.
-    # application_id: 123456789012345678
-
-window:
-  # Integer (default: 1280): initial window width in logical desktop units.
-  width: 1280
-  # Integer (default: 720): initial window height in logical desktop units.
-  height: 720
-  # String (default: Roblox): window title.
-  title: Roblox
-  # Boolean (default: false): render at physical display-pixel density instead
-  # of the logical desktop resolution. Enable only for sharper high-DPI output.
-  high_dpi: false
-
-display:
-  # Boolean (default: false): enable exclusive fullscreen mode.
-  # true: bypass compositor (X11), use native display mode (eg 1024x768).
-  # This may reduce input latency but can cause display mode switching issues
-  # on some systems. Recommended for competitive gameplay on stable displays.
-  # false: borderless fullscreen (default, safer, better compatibility).
-  exclusive_fullscreen: false
-  
-network:
-  # Boolean (default: false): follow the host HTTP/SOCKS5 proxy and
-  # automatically use its current port. Do not combine with a fixed proxy.
-  use_system_proxy: false
-  # Optional fixed HTTP proxy. Uncomment both values together. The host must
-  # not contain a scheme such as http://.
-  # String (optional, default: disabled): proxy host name or IP address.
-  # proxy_host: 127.0.0.1
-  # Integer (optional, default: disabled): proxy TCP port from 1 to 65535.
-  # proxy_port: 8080
-  # Absolute path (optional): custom PEM CA bundle. Mocktail reads this file
-  # directly and does not replace it during Roblox payload updates.
-  # ca_bundle: /home/user/.config/mocktail/cacert.pem
-
-updates:
-  # Boolean (default: true): check the latest Roblox version, derive an exact
-  # HostAbi profile, run two isolated canaries with the selected graphics
-  # backend, and promote only on success. An existing current payload is
-  # preserved when probation fails.
-  automatic: true
-  # String (default: apk-pure): direct x86_64 APK provider selection. Both
-  # accepted values resolve the provider chain, which currently starts with
-  # APKPure. Supported values: auto, apk-pure.
-  source: apk-pure
-  # Reserved for desktop update integrations. `mocktail_updater` itself never
-  # launches another process after changing the active payload.
-  launch_after_update: false
-```
-
-`window` is overridden by the saved window state on first launch. Delete
-`~/.local/state/mocktail/window-state.json` after changing it if the game
-still opens at the old size.
-
-Environment knobs, all optional:
+All optional. An invalid value is ignored unless the table says it is a startup
+error. The variables marked "same as" mirror a `config.yaml` key and are only
+read when that key is absent.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `MOCKTAIL_ENGINE_PUMP_REST` | `sleep` | `sleep`, `tpause`, or `spin` |
-| `MOCKTAIL_TEXT_OVERLAY` | `0` | `1` re-enables the libplacebo text overlay |
-| `MOCKTAIL_GAMEPAD` | `0` | `1` enables SDL gamepad polling |
-| `MOCKTAIL_DISCORD_RPC_ENABLED` | `0` | `1` re-enables Discord RPC |
-| `MOCKTAIL_SMALL_TEXTURE_UPSCALE` | `4` | `1` disables the 4× upscale |
-| `MOCKTAIL_FRAME_RATE_LIMIT` | `display` | overrides the config value |
+| `MOCKTAIL_GRAPHICS_BACKEND` | `direct-vulkan` | `direct-vulkan`, `opengl`, `system`, `angle-vulkan`. Same as `graphics.backend`. |
+| `MOCKTAIL_FRAME_RATE_LIMIT` | `-1` | `-1`, `display`, `unlimited`, or a positive integer. Same as `graphics.frame_rate_limit`. |
+| `MOCKTAIL_VSYNC` | `auto` | `auto`, `on`, `off`. Same as `graphics.vsync`. |
+| `MOCKTAIL_ETC2_EMULATION` | `auto` | `auto`, `native`, `off`. Same as `graphics.etc2_emulation`. |
+| `MOCKTAIL_MULTITHREADED_RENDERING` | `1` | `1`/`0`. Same as `performance.multithreaded_rendering`. |
+| `MOCKTAIL_PHYSICS_WORKER_MODE` | `latency` | `auto`, `latency`, `throughput`. Same as `performance.physics_worker_mode`. |
+| `MOCKTAIL_MEMORY_LIMIT_MB` | `3072` | Non-negative MiB. Same as `performance.memory_limit_mb`. |
+| `MOCKTAIL_GAMEMODE` | `on` | `auto`, `on`, `off`. Same as `performance.gamemode`. |
+| `MOCKTAIL_ENGINE_PUMP_REST` | chosen automatically | `sleep`, `tpause`, `spin`. Forces the host main-thread rest mode; invalid values fall back to the automatic choice. |
+| `MOCKTAIL_GAMEPAD` | `0` | `1` enables SDL gamepad polling. |
+| `MOCKTAIL_DISCORD_RPC_ENABLED` | `0` | `1` re-enables Discord RPC. Same as `integrations.discord_rpc.enabled`. |
+| `MOCKTAIL_SMALL_TEXTURE_UPSCALE` | `4` | Factor 1–8 for emulated ETC2 textures 64 px and under. `1` leaves them alone and uses the least memory. |
+| `MOCKTAIL_FORCE_1X1_TEXTURES` | `1` | `1` forces 1×1 UI textures. Set `0` to keep real UI textures. |
+| `MOCKTAIL_ADVERTISE_ETC2` | unset (advertise) | `0` hides ETC2 support from the client; anything else advertises it. |
+| `MOCKTAIL_TEXTURE_OVERRIDE_DIR` | `~/.config/mocktail/textures` | Directory searched for PNG texture overrides. |
+| `MOCKTAIL_TEXTURE_DUMP_DIR` | unset | Directory to dump decoded textures while authoring overrides. |
+| `MOCKTAIL_PROFILE_TRACE` | unset | Path for the Chrome trace written by the `--profile` flag. |
+| `MOCKTAIL_DISABLE_TELEMETRY` | `1` | Set to `1` before the client starts. Telemetry, analytics and crash reporting are disabled regardless. |
+
+`MOCKTAIL_TEXT_OVERLAY` is not an environment variable. The text overlay is
+disabled with a compile-time define; rebuild with `-DMOCKTAIL_TEXT_OVERLAY=1`
+to restore it.
 
 ## Install
 
@@ -271,7 +147,7 @@ from source, or use the local `packaging/aur/mokted` recipe.
 
 ### Install distribution packages
 
-Each release also carries a DEB, an RPM, and a pacman package, and a pacman package, with a
+Each release also carries a DEB, an RPM, and a pacman package, with a
 `.sha256` beside every file on the
 [releases page](https://github.com/sdqfrmnsyh/mokted/releases/latest):
 

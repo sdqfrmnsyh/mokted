@@ -19,7 +19,7 @@ Goal: a small GTK4 settings window, reachable from the app menu and from a
   what you are playing and you can switch it all off in one click.
 - Changes apply on next launch. A restart button restarts Mokted.
 
-Done when every option in `config/mocktail.example.yaml` that a player would
+Done when every option in `example.config.yaml` that a player would
 touch can be set without a text editor.
 
 ## 2. Controller button glyphs
@@ -63,9 +63,9 @@ compiles.
 - No more error 319 kicks after joining a server.
 - Roblox sees the real host RAM and screen size.
 - Desktop launcher that works on Wayland and finds the installed binary.
-- Discord Rich Presence on by default, with the experience name, creator,
-  elapsed time, the experience icon with a Roblox badge, and a join button
-  when the server is public. See the [FAQ](../FAQ.md) to switch it off.
+- Discord Rich Presence support (experience name, creator, elapsed time, the
+  experience icon with a Roblox badge, and a join button when the server is
+  public), off by default. See the [FAQ](../FAQ.md) to switch it on.
 - Custom Discord presence: title, details, state, and large and small icons
   from `config.yaml`, with `{place_name}`, `{place_icon}`, and
   `{creator_name}` placeholders.
@@ -75,9 +75,9 @@ compiles.
   `scripts/summarize_profile_trace.py` builds the before and after table.
 - Texture uploads no longer stall the frame they land on: ETC2 decode and
   resampling run on a persistent worker pool.
-- The host main thread rests between engine polls instead of spinning, and
-  GameMode's core pinning is released, so Roblox's workers spread across
-  every core. See [PERFORMANCE.md](PERFORMANCE.md).
+- The host main thread rests between engine polls instead of spinning. On a
+  hybrid CPU, `gamemode: auto` releases GameMode's core pinning so Roblox's
+  workers spread across every core. See [PERFORMANCE.md](PERFORMANCE.md).
 - Own app ID `io.github.sdqfrmnsyh.mokted`, so Mokted installs next to
   upstream.
 - AppImage and signed Flatpak releases on every `v*` tag, with the Flatpak

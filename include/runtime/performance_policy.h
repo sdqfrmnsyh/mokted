@@ -26,13 +26,13 @@ std::string_view PhysicsWorkerModeName(PhysicsWorkerMode mode);
 int CalculateThroughputWorkerCount(int available_physical_cores);
 
 struct PerformancePolicy {
-  bool multithreaded_rendering = false;
+  bool multithreaded_rendering = true;
   int physical_core_count = 0;
-  std::uint64_t memory_limit_mb = 0;
+  std::uint64_t memory_limit_mb = 3072;
   bool memory_limit_valid = true;
-  GameModePolicy game_mode = GameModePolicy::kAuto;
+  GameModePolicy game_mode = GameModePolicy::kOn;
   bool game_mode_valid = true;
-  PhysicsWorkerMode physics_worker_mode = PhysicsWorkerMode::kAuto;
+  PhysicsWorkerMode physics_worker_mode = PhysicsWorkerMode::kLatency;
   bool physics_worker_mode_valid = true;
 
   bool memory_limit_enabled() const {

@@ -355,12 +355,12 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
 
   if (const auto etc2 = value("graphics.etc2_emulation");
       etc2.has_value()) {
-    if (*etc2 != "auto" && *etc2 != "native") {
-      *error = "graphics.etc2_emulation must be auto or native";
+    if (*etc2 != "auto" && *etc2 != "native" && *etc2 != "off") {
+      *error = "graphics.etc2_emulation must be auto, native, or off";
       return false;
     }
     (*environment)["MOCKTAIL_ETC2_EMULATION"] = *etc2;
-    if (*etc2 == "native") {
+    if (*etc2 == "native" || *etc2 == "off") {
       // Downstream code still reads the legacy env var.
       (*environment)["MOCKTAIL_DISABLE_ETC2_EMULATION"] = "1";
     }

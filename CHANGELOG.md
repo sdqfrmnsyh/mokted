@@ -5,14 +5,25 @@ All important changes to the Mokted project will be documented in this dossier.
 ## [1.0.4] - 2026-09-24
 
 ### Custom Performance & Optimization (Low-End Hardware)
-- **Build Tuned**: Added custom compilation optimization for AMD Excavator architecture (`-march=bdver4 -mtune=bdver4 -O3 -flto=auto -fno-plt -fno-semantic-interposition-fomit-frame-pointer`).
+- **Build Tuned**: Added custom compilation optimization for AMD Excavator architecture (`-march=bdver4 -mtune=bdver4 -O3 -flto=auto -fno-plt -fno-semantic-interposition -fomit-frame-pointer`).
 - **Engine Pump**: Removes *busy-wait* on CPUs without Intel WAITPKG; by default uses *fallback* `kSleep` so that *thread render* doesn't overload *thread hardware*.
 - **Input Pump**: Reduces SDL's *polling input rate* from 240 Hz to 120 Hz to free up CPU time on each frame without sacrificing mouse responsiveness.
 - **Task Scheduler**: Limits Roblox's *scheduler pool* to a maximum of `physical_cores - 1` to prevent heavy *context-switch churn* on 2C/2T processors.
-- **Text Overlay**: Disables *libplacebo text overlay compositing* by default to save time *dispatch* GPU (can be reactivated with `MOCKTAIL_TEXT_OVERLAY=1`).
+- **Text Overlay**: Disables *libplacebo text overlay compositing* to save *dispatch* GPU time. It is compiled out by default; rebuild with `-DMOCKTAIL_TEXT_OVERLAY=1` to restore it. There is no runtime toggle.
 - **Discord RPC**: Disables *Discord Rich Presence* by default to prevent *socket polling* and eliminates *worker thread* 16 MB (can be activated with `MOCKTAIL_DISCORD_RPC_ENABLED=1`).
 - **Gamepad**: Disables *joystick*/SDL gamepad enumeration by default; polling is only done if `MOCKTAIL_GAMEPAD=1` (keyboard and mouse are not affected).
 - **Exclusive Fullscreen**: Supports exclusive fullscreen mode (`exclusive_fullscreen: true`) to bypass compositor and use native display modes for reduced input latency on stable displays. Defaults to borderless fullscreen for better compatibility and safety.
+
+### Hardcoded Ultra-Low-End Rendering & Quality Defaults
+- **Applied on every launch** with no config file and no environment variables. A plain `mokted` run gets them.
+- **Textures forced to lowest quality**: `DFIntTextureQualityOverride=1`, `DFFlagTextureQualityOverrideEnabled=True`, FRM quality level 1, mip bias 5 (about 1/1024 the size), a 16 MiB texture budget, and 1×1 UI textures.
+- **Lighting forced to voxel/forward**: Future Is Bright, global illumination, SSAO, SSR, shadows, bloom, depth of field, HDR and tone mapping are all off; 1× MSAA.
+- **Every culling pass enabled**: frustum, portal, distance, Hi-Z and occlusion queries.
+- **Effects capped**: particles 50 with 4 emitters, grass off, avatar/accessory features off.
+- **Network/UI/scheduler tuned**: network tick 15, input poll 20 Hz, background/idle/periodic tasks disabled, scheduler capped at 1 worker, physics substeps and constraint iterations at 2.
+- **Luau incremental GC** with StepMul 400, GoalRatio 400, GoalCore 150 and startup suppression; audio limited to 4 output channels with a 16384-sample DSP buffer.
+- **Telemetry, analytics and crash reporting fully disabled.**
+- **`config.yaml` defaults aligned** with the tuned values: `multithreaded_rendering: true`, `physics_worker_mode: latency`, `memory_limit_mb: 3072`, `gamemode: on`, `vsync: auto`, `etc2_emulation: auto`, `frame_rate_limit: -1`, and Discord RPC off. See [README](README.md) and [PERFORMANCE.md](docs/PERFORMANCE.md).
 
 ### Identity & Configuration Changes
 - Change the application identity to Mokted (is an independent *fork* of komaruworld/mocktail and CoderDayton/nightcap).

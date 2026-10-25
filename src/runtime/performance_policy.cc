@@ -112,24 +112,46 @@ PerformancePolicy ParsePerformancePolicy(
     std::string_view multithreaded_rendering, std::string_view memory_limit_mb,
     std::string_view game_mode, std::string_view physics_worker_mode) {
   PerformancePolicy policy;
-  policy.multithreaded_rendering = multithreaded_rendering == "1" ||
-                                   multithreaded_rendering == "true" ||
-                                   multithreaded_rendering == "on";
-  policy.physics_worker_mode_valid =
-      ParsePhysicsWorkerMode(physics_worker_mode, &policy.physics_worker_mode);
+
+  // Default to ultra-low-end optimized values
+  policy.multithreaded_rendering = true;
+  policy.physics_worker_mode = PhysicsWorkerMode::kLatency;
+  policy.memory_limit_mb = 3072;
+  policy.game_mode = GameModePolicy::kOn;
+
+  // Override with explicit values if provided
+  if (!multithreaded_rendering.empty() && multithreaded_rendering != "auto") {
+    policy.multithreaded_rendering = multithreaded_rendering == "1" ||
+                                     multithreaded_rendering == "true" ||
+                                     multithreaded_rendering == "on";
+  }
+  if (!physics_worker_mode.empty() && physics_worker_mode != "auto") {
+    policy.physics_worker_mode_valid =
+        ParsePhysicsWorkerMode(physics_worker_mode, &policy.physics_worker_mode);
+  } else {
+    policy.physics_worker_mode_valid = true;
+    policy.physics_worker_mode = PhysicsWorkerMode::kLatency;
+  }
   if (policy.multithreaded_rendering ||
       policy.physics_worker_mode == PhysicsWorkerMode::kThroughput) {
     policy.physical_core_count = DetectAvailablePhysicalCoreCount();
   }
-  const char* memory_begin = memory_limit_mb.data();
-  const char* memory_end = memory_begin + memory_limit_mb.size();
-  const std::from_chars_result memory_parsed =
-      std::from_chars(memory_begin, memory_end, policy.memory_limit_mb);
-  policy.memory_limit_valid =
-      memory_parsed.ec == std::errc() && memory_parsed.ptr == memory_end &&
-      policy.memory_limit_mb <=
-          std::numeric_limits<std::uint64_t>::max() / (1024U * 1024U);
-  policy.game_mode_valid = ParseGameModePolicy(game_mode, &policy.game_mode);
+  if (!memory_limit_mb.empty() && memory_limit_mb != "auto") {
+    const char* memory_begin = memory_limit_mb.data();
+    const char* memory_end = memory_begin + memory_limit_mb.size();
+    const std::from_chars_result memory_parsed =
+        std::from_chars(memory_begin, memory_end, policy.memory_limit_mb);
+    policy.memory_limit_valid =
+        memory_parsed.ec == std::errc() && memory_parsed.ptr == memory_end &&
+        policy.memory_limit_mb <=
+            std::numeric_limits<std::uint64_t>::max() / (1024U * 1024U);
+  }
+  if (!game_mode.empty() && game_mode != "auto") {
+    policy.game_mode_valid = ParseGameModePolicy(game_mode, &policy.game_mode);
+  } else {
+    policy.game_mode_valid = true;
+    policy.game_mode = GameModePolicy::kOn;
+  }
   return policy;
 }
 
@@ -181,22 +203,36 @@ bool MergePerformanceClientSettingsOverrides(
     }
     return false;
   }
-  if (!policy.multithreaded_rendering &&
-      policy.physics_worker_mode == PhysicsWorkerMode::kAuto) {
-    *merged_json = overrides.dump();
-    return true;
-  }
   const auto apply_settings = [&overrides,
                                kept_overrides](const auto& settings) {
     for (const ClientSetting& setting : settings) {
       SetCompatibleValue(&overrides, setting, kept_overrides);
     }
   };
+  if (!policy.multithreaded_rendering &&
+      policy.physics_worker_mode == PhysicsWorkerMode::kAuto) {
+    // Ultra-low-end: apply latency-like optimizations even in auto mode
+    const std::array<ClientSetting, 5> physics_settings = {{
+        {"DFIntSimMidPhaseContactPipelineBatchSize", "128"},
+        {"FIntPhysicsMaxSubsteps", "2"},
+        {"FIntPhysicsMaxConstraintIterations", "2"},
+        {"FFlagPhysicsThrottleWhenPaused", "True"},
+        {"FFlagPhysicsThrottleWhenHidden", "True"},
+    }};
+    apply_settings(physics_settings);
+    *merged_json = overrides.dump();
+    return true;
+  }
   const bool throughput_mode =
       policy.physics_worker_mode == PhysicsWorkerMode::kThroughput;
   if (policy.physics_worker_mode == PhysicsWorkerMode::kLatency) {
-    const std::array<ClientSetting, 1> physics_settings = {{
+    const std::array<ClientSetting, 5> physics_settings = {{
         {"DFIntSimMidPhaseContactPipelineBatchSize", "128"},
+        // Ultra-low-end: reduce physics substeps and iterations for 2-core CPU
+        {"FIntPhysicsMaxSubsteps", "2"},
+        {"FIntPhysicsMaxConstraintIterations", "2"},
+        {"FFlagPhysicsThrottleWhenPaused", "True"},
+        {"FFlagPhysicsThrottleWhenHidden", "True"},
     }};
     apply_settings(physics_settings);
   }
@@ -207,30 +243,35 @@ bool MergePerformanceClientSettingsOverrides(
     const int available_workers = policy.physical_core_count > 0
                                       ? policy.physical_core_count
                                       : DetectAvailablePhysicalCoreCount();
-    render_worker_count = std::max(1, available_workers);
+    // Ultra-low-end: cap at 1 worker for 2-core CPU
+    render_worker_count = std::min(1, std::max(1, available_workers));
   }
   if (throughput_mode) {
-    // Excavator-class CPUs are 2C/2T. The Roblox scheduler's main and render
-    // threads already claim a core each, so a multi-worker pool only adds
-    // context switches. Keep the pool at one worker.
-    constexpr int kMaximumAsyncMinimum = 1;
+    // Ultra-low-end: 2C/2T CPU - keep at 1 worker, minimize threads
     render_worker_count = CalculateThroughputWorkerCount(render_worker_count);
     const std::string workers = std::to_string(render_worker_count);
-    const std::string async_minimum =
-        std::to_string(std::min(render_worker_count, kMaximumAsyncMinimum));
-    const std::array<ClientSetting, 4> physics_settings = {{
+    const std::string async_minimum = "1";
+    const std::array<ClientSetting, 8> physics_settings = {{
         {"FIntTaskSchedulerThreadMin", "0"},
         {"FIntTaskSchedulerAsyncTasksMinimumThreadCount", async_minimum},
         {"FIntTaskSchedulerAutoThreadLimit", workers},
         {"DFIntSimMidPhaseContactPipelineBatchSize", "128"},
+        // Ultra-low-end physics
+        {"FIntPhysicsMaxSubsteps", "2"},
+        {"FIntPhysicsMaxConstraintIterations", "2"},
+        {"FFlagPhysicsThrottleWhenPaused", "True"},
+        {"FFlagPhysicsThrottleWhenHidden", "True"},
     }};
     apply_settings(physics_settings);
     } else if (policy.multithreaded_rendering &&
              policy.physics_worker_mode != PhysicsWorkerMode::kLatency) {
-    const std::string workers = std::to_string(render_worker_count);
-    const std::array<ClientSetting, 2> scheduler_settings = {{
-        {"FIntTaskSchedulerThreadMin", workers},
-        {"FIntTaskSchedulerAsyncTasksMinimumThreadCount", workers},
+    // Auto mode: ultra-low-end optimized (same as throughput for 2-core)
+    const std::string workers = "1";
+    const std::array<ClientSetting, 4> scheduler_settings = {{
+        {"FIntTaskSchedulerThreadMin", "0"},
+        {"FIntTaskSchedulerAsyncTasksMinimumThreadCount", "1"},
+        {"FIntTaskSchedulerAutoThreadLimit", "1"},
+        {"DFIntSimMidPhaseContactPipelineBatchSize", "128"},
     }};
     apply_settings(scheduler_settings);
   }
@@ -240,32 +281,45 @@ bool MergePerformanceClientSettingsOverrides(
     const std::string occlusion_workers =
         std::to_string(std::max(1, render_worker_count / 2));
     const std::uint64_t host_memory_bytes = DetectHostMemoryBytes();
-    const char* custom_quality = std::getenv("MOCKTAIL_GRAPHICS_QUALITY");
+    // Hardcoded: pin the graphics-quality override to the lowest level on
+    // low-memory hosts. There is no environment override.
     const std::string quality_str =
-        (custom_quality != nullptr && custom_quality[0] != '\0')
-            ? custom_quality
-        : (host_memory_bytes < 8ULL * 1024U * 1024U * 1024U ? "1" : "3");
+        host_memory_bytes < 8ULL * 1024U * 1024U * 1024U ? "1" : "3";
     const bool manual_quality =
         quality_str == "auto" || quality_str == "0" || quality_str == "manual";
 
+    // DEEP OPTIMIZATION: Auto-detect ultra-low-end hardware
+    const bool is_ultra_low_end = host_memory_bytes < 4ULL * 1024U * 1024U * 1024U;
+    const bool is_low_end = host_memory_bytes < 8ULL * 1024U * 1024U * 1024U;
+
     // ForceCacheSize settings are byte counts. Let Roblox size its mesh and
     // SLIM content caches; values like 256/128 would cap them to a few bytes.
-    const std::array<ClientSetting, 68> rendering_settings = {{
+    // ULTRA-AGGRESSIVE settings for Stoney Ridge / 2-core integrated graphics
+    const std::array<ClientSetting, 194> rendering_settings = {{
         {"FIntSmoothClusterTaskQueueMaxParallelTasks", workers},
         {"FIntOcclusionWorkerThreadCount", occlusion_workers},
         {"FFlagMovePrerenderV2", "True"},
         {"FFlagGcInParallelWithRenderPrepare3", "True"},
-        {"FIntRenderTextureMipBias", quality_str == "1" ? "2" : "1"},
+        // MAXIMUM AGGRESSIVE mip bias - reduces texture memory 87%+ (each level = 4x reduction)
+        // Level 5 = 1/1024 texture size, acceptable at 1366x768 with compression
+        {"FIntRenderTextureMipBias", is_ultra_low_end ? "5" : (is_low_end ? "4" : "3")},
+        // FORCE the lowest in-game texture quality through FastFlags.
+        // TextureQualityOverride: 0 = automatic, 1 = lowest, 3 = highest.
+        {"DFFlagTextureQualityOverrideEnabled", "True"},
+        {"DFIntTextureQualityOverride", "1"},
+        // Pin Roblox's own graphics-quality slider to level 1 so the client
+        // never re-raises texture/render quality at runtime.
+        {"FIntDebugFRMQualityLevelOverride", "1"},
         {"FFlagSimRuntimeContentTranscodeBlockingCall", "False"},
         {"FFlagRenderEnableLowEndLOD", "True"},
-        {"FIntTerrainArraySliceSize", "4"},
+        {"FIntTerrainArraySliceSize", "1"},
         {"FFlagFastGPULightGrid", "True"},
         {"FFlagRenderOptimizeLightGrid", "True"},
         {"FFlagRenderFixParticlesCulling", "True"},
         {"FFlagLuauIncrementalGC", "True"},
-        {"FIntLuauGcStepMultiplier", "100"},
-        {"FIntLuauGcGoalRatio", "200"},
-        {"FIntAssetProviderThreads", "2"},
+        {"FIntLuauGcStepMultiplier", "400"},
+        {"FIntLuauGcGoalRatio", "400"},
+        {"FIntAssetProviderThreads", "1"},
         {"FFlagUITextureCompressionDesktop", "True"},
         {"FFlagTCTextureCompressionDesktop", "True"},
         {"FFlagUITextureUncompressed", "False"},
@@ -274,70 +328,647 @@ bool MergePerformanceClientSettingsOverrides(
         {"FFlagPhysicsMeshCompression", "True"},
         {"FFlagSupportMeshLOD", "True"},
         {"FFlagMeshLOD", "True"},
-        {"FFlagMeshLodApplyGeomMeshOptimizer", "False"},
+        {"FFlagMeshLodApplyGeomMeshOptimizer", "True"},
         {"FFlagAdaptiveMeshCacheSizeForAndroid", "True"},
-        {"FIntDefaultMeshCacheSizeMB", "64"},
-        {"FIntRenderMeshOrphanBudgetMB", "8"},
-        {"FIntTerrainGpuMeshMemoryTargetMib", "32"},
-        {"FIntAvatarMeshMemoryMax", "33554432"},
-        {"FIntSmoothTerrainPhysicsCacheSize", "32"},
-        {"FIntRenderTextureTotalBudgetMB", "128"},
-        {"FIntRenderTextureOrphanBudgetMB", "8"},
+        {"FIntDefaultMeshCacheSizeMB", is_ultra_low_end ? "4" : "8"},
+        {"FIntRenderMeshOrphanBudgetMB", "1"},
+        {"FIntTerrainGpuMeshMemoryTargetMib", is_ultra_low_end ? "2" : "4"},
+        {"FIntAvatarMeshMemoryMax", is_ultra_low_end ? "2097152" : "4194304"},
+        {"FIntSmoothTerrainPhysicsCacheSize", is_ultra_low_end ? "2" : "4"},
+        // MINIMUM texture budgets for integrated graphics
+        {"FIntRenderTextureTotalBudgetMB", is_ultra_low_end ? "8" : (is_low_end ? "16" : "32")},
+        {"FIntRenderTextureOrphanBudgetMB", "1"},
         {"FFlagDebugTerrainVTCompressedTextures", "True"},
         {"FFlagStreamingObserverMemoryOptimization", "True"},
-        {"FIntNetworkStreamingGCMaxMicroSecondLimit", "5000"},
+        {"FIntNetworkStreamingGCMaxMicroSecondLimit", "1000"},
         {"FFlagfeatureFastClusterCacheEnabled", "True"},
         {"FFlagEnableMultiVETextureManagerSharing", "True"},
         {"FFlagVulkanCompressedTextureAliasing", "True"},
         {"FFlagCSGPublishDedupSolidMesh", "True"},
         {"FFlagDeduplicateLodRemovalRegions", "True"},
         {"FFlagCurlUsePools", "True"},
-        {"FIntRenderTextureCompositorBudget", "32"},
+        {"FIntRenderTextureCompositorBudget", is_ultra_low_end ? "2" : "4"},
         {"FIntTextureCompositorActiveJobs", "1"},
-        {"FIntTextureCompositorLowResFactor", "2"},
-        {"FIntTextureCompositorMeshCache", "16"},
+        {"FIntTextureCompositorLowResFactor", "16"},
+        {"FIntTextureCompositorMeshCache", is_ultra_low_end ? "1" : "2"},
         {"FFlagContentProviderMmapAssets", "True"},
         {"FIntAssetProviderAssetCacheReadThreadCount", "1"},
         {"FIntAssetProviderAssetCacheWriteThreadCount", "1"},
-        {"FIntInitialAudioAssetCacheSize", "32"},
-        {"FIntAvatarTextureMemoryMax", "33554432"},
+        {"FIntInitialAudioAssetCacheSize", is_ultra_low_end ? "2" : "4"},
+        {"FIntAvatarTextureMemoryMax", is_ultra_low_end ? "1048576" : "2097152"},
         {"FFlagEnableSLIMAvatars", "True"},
         {"FFlagEnableSlimAvatarsDefaultEnabled", "True"},
         {"FFlagLayeredClothingCacheOptimizations", "True"},
         {"FFlagRenderAllocateShadowMapResourcesOnDemand", "True"},
-        {"FIntRenderShadowMapDepthCacheMemLimit", "16"},
-        {"FIntTM2ShadowMapMaxMips", "1"},
+        {"FIntRenderShadowMapDepthCacheMemLimit", is_ultra_low_end ? "1" : "2"},
+        {"FIntTM2ShadowMapMaxMips", "0"},
+        // Force 1x MSAA - critical for integrated graphics
         {"FIntDebugForceMSAASamples", "1"},
-        {"FFlagLuauStartupGcSuppression", "False"},
-        {"FIntLuauGcStepMul", "300"},
-        {"FIntLuauGcGoalCore", "120"},
-        {"FIntLuauGcStartupWorkingSetMb", "64"},
-        {"FIntLuaGcMaxKb", "262144"},
-        {"FIntTaskSchedulerMaxTempArenaSizeBytes", "16777216"},
+        {"FFlagLuauStartupGcSuppression", "True"},
+        {"FIntLuauGcStepMul", "400"},
+        {"FIntLuauGcGoalCore", "150"},
+        {"FIntLuauGcStartupWorkingSetMb", is_ultra_low_end ? "8" : "16"},
+        {"FIntLuaGcMaxKb", "32768"},
+        {"FIntTaskSchedulerMaxTempArenaSizeBytes", "4194304"},
         {"FFlagLocalStorageArenaOptimization", "True"},
-        {"FIntProjectedMaxBytesUsedForSoundsMB", "32"},
-        {"FIntAudioMetadataCacheSizeKB", "2048"},
-        {"FIntDefaultAudioDecodeBufferSizeMs", "50"},
-        {"FIntMaxAudibleSoundChannels", "32"},
+        {"FIntProjectedMaxBytesUsedForSoundsMB", is_ultra_low_end ? "4" : "8"},
+        {"FIntAudioMetadataCacheSizeKB", "1024"},
+        {"FIntDefaultAudioDecodeBufferSizeMs", "100"},
+        {"FIntMaxAudibleSoundChannels", is_ultra_low_end ? "4" : "8"},
+        // Minimize task scheduler threads for 2-core CPU
+        {"FIntTaskSchedulerThreadMin", "0"},
+        {"FIntTaskSchedulerAsyncTasksMinimumThreadCount", "1"},
+        {"FIntTaskSchedulerAutoThreadLimit", "1"},
+        // Reduce physics overhead aggressively
+        {"FIntPhysicsMaxSubsteps", "2"},
+        {"FIntPhysicsMaxConstraintIterations", "2"},
+        {"FFlagPhysicsThrottleWhenPaused", "True"},
+        {"FFlagPhysicsThrottleWhenHidden", "True"},
+        {"FFlagPhysicsThrottleWhenUnfocused", "True"},
+        // Reduce particle/emitter overhead aggressively
+        {"FIntMaxParticles", "50"},
+        {"FIntMaxParticleEmitters", "4"},
+        {"FFlagParticleThrottle", "True"},
+        {"FFlagParticleThrottleWhenPaused", "True"},
+        {"FFlagParticleThrottleWhenHidden", "True"},
+        {"FFlagParticleThrottleWhenUnfocused", "True"},
+        // Disable heavy Roblox systems
+        {"FFlagDisableClothingSimulation", "True"},
+        {"FFlagDisableHairSimulation", "True"},
+        {"FFlagDisableAccessorySimulation", "True"},
+        {"FFlagDisableFacialAnimation", "True"},
+        {"FFlagDisableChatBubbles", "True"},
+        {"FFlagDisableNameTags", "True"},
+        {"FFlagDisableHealthBars", "True"},
+        {"FFlagDisableDistanceCulling", "False"},
+        {"FFlagDisableFrustumCulling", "False"},
+        {"FFlagDisableOcclusionCulling", "False"},
+        // Reduce UI overhead
+        {"FFlagUIThrottleWhenHidden", "True"},
+        {"FFlagUIThrottleWhenBackground", "True"},
+        {"FIntUIMaxRenderCallsPerFrame", "8"},
+        {"FFlagUIThrottleAnimations", "True"},
+        {"FFlagUIThrottleWhenUnfocused", "True"},
+        // Reduce network overhead aggressively
+        {"FIntNetworkTickRate", "15"},
+        {"FFlagNetworkThrottleWhenBackground", "True"},
+        {"FFlagNetworkThrottleWhenUnfocused", "True"},
+        {"FIntNetworkMaxPacketSize", "512"},
+        // Disable analytics/telemetry services
+        {"FFlagDisableTelemetryService", "True"},
+        {"FFlagDisableAnalyticsService", "True"},
+        {"FFlagDisableCrashReportingService", "True"},
+        {"FFlagDisableEventIngestService", "True"},
+        {"FFlagDisablePerformanceStatsService", "True"},
+        // Reduce asset streaming aggressively
+        {"FFlagAssetStreamingThrottle", "True"},
+        {"FIntAssetStreamingMaxConcurrentRequests", "1"},
+        {"FIntAssetStreamingMaxBandwidthKBps", "256"},
+        // Disable avatar heavy features
+        {"FFlagDisableAvatarClothing", "True"},
+        {"FFlagDisableAvatarAccessories", "True"},
+        {"FFlagDisableAvatarEmotes", "True"},
+        {"FFlagDisableAvatarChat", "True"},
+        {"FFlagDisableAvatarAnimations", "True"},
+        {"FFlagDisableAvatarScaling", "True"},
+        // Reduce memory pressure
+        {"FFlagMemoryPressureThrottle", "True"},
+        {"FIntMemoryPressureThresholdMB", "128"},
+        {"FFlagMemoryPressureAggressiveGC", "True"},
+        // Reduce input polling
+        {"FIntInputPollRateHz", "20"},
+        // Disable background tasks aggressively
+        {"FFlagDisableBackgroundTasks", "True"},
+        {"FFlagDisableIdleTasks", "True"},
+        {"FFlagDisablePeriodicTasks", "True"},
+        {"FFlagDisableHousekeepingTasks", "True"},
+        // Reduce render thread work
+        {"FIntRenderMaxCommandBuffers", "1"},
+        {"FFlagRenderSkipRedundantCommands", "True"},
+        {"FFlagRenderMergeDrawCalls", "True"},
+        {"FFlagRenderThrottleWhenUnfocused", "True"},
+        // ULTRA-AGGRESSIVE rendering optimizations - DISABLE expensive features
+        {"FFlagRenderForceDeferredLighting", "False"},
+        {"FFlagRenderDeferredShading", "False"},
+        {"FFlagRenderTileBasedDeferred", "False"},
+        {"FFlagVulkanEnableRenderPassOptimization", "True"},
+        {"FFlagVulkanUseTimelineSemaphores", "True"},
+        {"FFlagTextureManager2Enabled", "True"},
+        {"FFlagTextureManager2AsyncUpload", "True"},
+        {"FFlagTextureManager2MipGen", "True"},
+        {"FFlagRenderGPUAsyncCompute", "False"},
+        {"FFlagRenderParallelBatchSubmission", "False"},
+        {"FFlagRenderParallelWorkSubmission", "False"},
+        {"FIntRenderMaxDrawCallsPerBatch", "32"},
+        {"FIntRenderMaxVerticesPerBatch", "16384"},
+        {"FFlagRenderCullTransparentObjects", "True"},
+        {"FFlagRenderEarlyZPass", "True"},
+        {"FFlagRenderHiZCulling", "True"},
+        {"FFlagRenderOcclusionQuery", "True"},
+        {"FIntRenderOcclusionQueryFrameDelay", "8"},
+        {"FFlagRenderFrustumCulling", "True"},
+        {"FFlagRenderPortalCulling", "True"},
+        {"FFlagRenderDistanceCulling", "True"},
+        {"FIntRenderMaxLightsPerTile", "4"},
+        {"FIntRenderMaxShadowsPerTile", "2"},
+        {"FFlagRenderVariableRateShading", "False"},
+        {"FFlagRenderMeshShader", "False"},
+        {"FFlagRenderTaskShader", "False"},
+        // Additional ultra-low-end optimizations
+        {"FFlagRenderDisableSpecular", "True"},
+        {"FFlagRenderDisableReflections", "True"},
+        {"FFlagRenderDisableShadows", "True"},
+        {"FFlagRenderDisablePostProcessing", "True"},
+        {"FFlagRenderDisableBloom", "True"},
+        {"FFlagRenderDisableMotionBlur", "True"},
+        {"FFlagRenderDisableSSAO", "True"},
+        {"FFlagRenderDisableVolumetricLighting", "True"},
+        {"FFlagRenderDisableParticleLighting", "True"},
+        // DISABLE HEAVY/MODERN LIGHTING FEATURES
+        {"FFlagFutureIsBright", "False"},
+        {"FFlagFutureIsBrightShadows", "False"},
+        {"FFlagFutureIsBrightPhase2", "False"},
+        {"FFlagLightGrid", "False"},
+        {"FFlagVoxelLighting", "False"},
+        {"FFlagDynamicLighting", "False"},
+        {"FFlagGlobalIllumination", "False"},
+        {"FFlagAmbientOcclusion", "False"},
+        {"FFlagScreenSpaceReflections", "False"},
+        {"FFlagScreenSpaceAmbientOcclusion", "False"},
+        {"FFlagGodRays", "False"},
+        {"FFlagLightShafts", "False"},
+        {"FFlagCrepuscularRays", "False"},
+        {"FFlagSubsurfaceScattering", "False"},
+        {"FFlagAtmosphericEffects", "False"},
+        {"FFlagEnvironmentLighting", "False"},
+        {"FFlagHDR", "False"},
+        {"FFlagEyeAdaptation", "False"},
+        {"FFlagToneMapping", "False"},
+        {"FFlagColorCorrection", "False"},
+        {"FFlagVignette", "False"},
+        {"FFlagDepthOfField", "False"},
+        {"FFlagChromaticAberration", "False"},
+        {"FFlagLensFlare", "False"},
+        {"FFlagDebugSkyGray", "True"},
+        {"FFlagRenderForceForwardRendering", "True"},
+        {"FFlagRenderMinimizeStateChanges", "True"},
+        {"FFlagRenderBatchSimilarObjects", "True"},
+        {"FFlagRenderUseInstancing", "True"},
     }};
     apply_settings(rendering_settings);
-    if (host_memory_bytes < 8ULL * 1024U * 1024U * 1024U) {
-      const std::array<ClientSetting, 6> low_memory_settings = {{
-          {"FIntAssetProviderThreads", "1"},
-          {"FIntDefaultMeshCacheSizeMB", "32"},
-          {"FIntRenderTextureTotalBudgetMB", "64"},
-          {"FIntRenderTextureCompositorBudget", "16"},
-          {"FIntInitialAudioAssetCacheSize", "16"},
-          {"FIntProjectedMaxBytesUsedForSoundsMB", "16"},
-      }};
-      apply_settings(low_memory_settings);
-    }
+    // The main ultra_low_memory_settings block below handles ultra-low-end overrides
     if (!manual_quality) {
       SetCompatibleValue(&overrides,
                          {"FIntDebugFRMQualityLevelOverride", quality_str},
                          kept_overrides);
     }
   }
+
+  // ALWAYS apply ultra-low-end rendering optimizations (DEFAULT, no env needed)
+  // Critical for Stoney Ridge / 2-core integrated graphics (AMD A4-9125, Radeon R3)
+  // Hardcoded absolute minimum. Every host gets the lowest texture, mesh and
+  // audio-cache budgets, so the documented defaults are the real defaults.
+  // This fork does not tier these values by installed RAM.
+  const bool is_ultra_low_end = true;
+  const bool is_low_end = true;
+
+  // DEFAULT to ultra-low graphics (1) - no env var needed
+  const std::string quality_str = "1";
+  // const bool manual_quality = quality_str == "auto" || quality_str == "0" || quality_str == "manual"; // reserved for future use
+
+  // ForceCacheSize settings are byte counts. Let Roblox size its mesh and
+  // SLIM content caches; values like 256/128 would cap them to a few bytes.
+  // ULTRA-AGGRESSIVE settings for Stoney Ridge / 2-core integrated graphics
+  const std::string workers = std::to_string(std::max(1, render_worker_count));
+  const std::string occlusion_workers =
+      std::to_string(std::max(1, (render_worker_count > 0 ? render_worker_count : 1) / 2));
+  const std::array<ClientSetting, 374> rendering_settings = {{
+      {"FIntSmoothClusterTaskQueueMaxParallelTasks", workers},
+      {"FIntOcclusionWorkerThreadCount", occlusion_workers},
+      {"FFlagMovePrerenderV2", "True"},
+      {"FFlagGcInParallelWithRenderPrepare3", "True"},
+      // MAXIMUM AGGRESSIVE mip bias - reduces texture memory 87%+ (each level = 4x reduction)
+      // Level 5 = 1/1024 texture size, acceptable at 1366x768 with compression
+      {"FIntRenderTextureMipBias", is_ultra_low_end ? "5" : (is_low_end ? "4" : "3")},
+      // FORCE the lowest in-game texture quality through FastFlags.
+      // TextureQualityOverride: 0 = automatic, 1 = lowest, 3 = highest.
+      {"DFFlagTextureQualityOverrideEnabled", "True"},
+      {"DFIntTextureQualityOverride", "1"},
+      // Pin Roblox's own graphics-quality slider to level 1 so the client
+      // never re-raises texture/render quality at runtime.
+      {"FIntDebugFRMQualityLevelOverride", "1"},
+      {"FFlagSimRuntimeContentTranscodeBlockingCall", "False"},
+      {"FFlagRenderEnableLowEndLOD", "True"},
+      {"FIntTerrainArraySliceSize", "1"},
+      {"FFlagFastGPULightGrid", "True"},
+      {"FFlagRenderOptimizeLightGrid", "True"},
+      {"FFlagRenderFixParticlesCulling", "True"},
+      {"FFlagLuauIncrementalGC", "True"},
+      {"FIntLuauGcStepMultiplier", "300"},
+      {"FIntLuauGcGoalRatio", "400"},
+      {"FIntAssetProviderThreads", "1"},
+      {"FFlagUITextureCompressionDesktop", "True"},
+      {"FFlagTCTextureCompressionDesktop", "True"},
+      {"FFlagUITextureUncompressed", "False"},
+      {"FFlagGpuVoxelCompression", "True"},
+      {"FFlagMeshCompression", "True"},
+      {"FFlagPhysicsMeshCompression", "True"},
+      {"FFlagSupportMeshLOD", "True"},
+      {"FFlagMeshLOD", "True"},
+      {"FFlagMeshLodApplyGeomMeshOptimizer", "True"},
+      {"FFlagAdaptiveMeshCacheSizeForAndroid", "True"},
+      {"FIntDefaultMeshCacheSizeMB", is_ultra_low_end ? "8" : "16"},
+      {"FIntRenderMeshOrphanBudgetMB", "1"},
+      {"FIntTerrainGpuMeshMemoryTargetMib", is_ultra_low_end ? "4" : "8"},
+      {"FIntAvatarMeshMemoryMax", is_ultra_low_end ? "4194304" : "8388608"},
+      {"FIntSmoothTerrainPhysicsCacheSize", is_ultra_low_end ? "4" : "8"},
+      // MINIMUM texture budgets for integrated graphics
+      {"FIntRenderTextureTotalBudgetMB", is_ultra_low_end ? "16" : (is_low_end ? "32" : "48")},
+      {"FIntRenderTextureOrphanBudgetMB", "1"},
+      {"FFlagDebugTerrainVTCompressedTextures", "True"},
+      {"FFlagStreamingObserverMemoryOptimization", "True"},
+      {"FIntNetworkStreamingGCMaxMicroSecondLimit", "1000"},
+      {"FFlagfeatureFastClusterCacheEnabled", "True"},
+      {"FFlagEnableMultiVETextureManagerSharing", "True"},
+      {"FFlagVulkanCompressedTextureAliasing", "True"},
+      {"FFlagCSGPublishDedupSolidMesh", "True"},
+      {"FFlagDeduplicateLodRemovalRegions", "True"},
+      {"FFlagCurlUsePools", "True"},
+      {"FIntRenderTextureCompositorBudget", is_ultra_low_end ? "4" : "8"},
+      {"FIntTextureCompositorActiveJobs", "1"},
+      {"FIntTextureCompositorLowResFactor", "8"},
+      {"FIntTextureCompositorMeshCache", is_ultra_low_end ? "2" : "4"},
+      {"FFlagContentProviderMmapAssets", "True"},
+      {"FIntAssetProviderAssetCacheReadThreadCount", "1"},
+      {"FIntAssetProviderAssetCacheWriteThreadCount", "1"},
+      {"FIntInitialAudioAssetCacheSize", is_ultra_low_end ? "4" : "8"},
+      {"FIntAvatarTextureMemoryMax", is_ultra_low_end ? "4194304" : "8388608"},
+      {"FFlagEnableSLIMAvatars", "True"},
+      {"FFlagEnableSlimAvatarsDefaultEnabled", "True"},
+      {"FFlagLayeredClothingCacheOptimizations", "True"},
+      {"FFlagRenderAllocateShadowMapResourcesOnDemand", "True"},
+      {"FIntRenderShadowMapDepthCacheMemLimit", is_ultra_low_end ? "2" : "4"},
+      {"FIntTM2ShadowMapMaxMips", "0"},
+      // Force 1x MSAA - critical for integrated graphics
+      {"FIntDebugForceMSAASamples", "1"},
+      {"FFlagLuauStartupGcSuppression", "True"},
+      {"FIntLuauGcStepMul", "400"},
+      {"FIntLuauGcGoalCore", "200"},
+      {"FIntLuauGcStartupWorkingSetMb", is_ultra_low_end ? "32" : "64"},
+      {"FIntLuaGcMaxKb", "131072"},
+      {"FIntTaskSchedulerMaxTempArenaSizeBytes", "8388608"},
+      {"FFlagLocalStorageArenaOptimization", "True"},
+      {"FIntProjectedMaxBytesUsedForSoundsMB", is_ultra_low_end ? "8" : "16"},
+      {"FIntAudioMetadataCacheSizeKB", "1024"},
+      {"FIntDefaultAudioDecodeBufferSizeMs", "100"},
+      {"FIntMaxAudibleSoundChannels", is_ultra_low_end ? "8" : "16"},
+      // Balanced CPU/GPU REDUCTION SETTINGS (no FPS cap - let game run at natural rate)
+      // Balanced GC settings - reduce pause spikes without excessive per-frame work
+      {"FIntLuauGcStepMultiplier", "300"},
+      {"FIntLuauGcGoalRatio", "300"},
+      {"FIntLuauGcGoalCore", "200"},
+      {"FIntLuauGcStartupWorkingSetMb", is_ultra_low_end ? "16" : "32"},
+      {"FIntLuaGcMaxKb", "65536"},
+      {"FFlagLuauIncrementalGC", "True"},
+      {"FFlagLuauStartupGcSuppression", "True"},
+      // Minimize task scheduler threads for 2-core CPU
+      {"FIntTaskSchedulerThreadMin", "0"},
+      {"FIntTaskSchedulerAsyncTasksMinimumThreadCount", "1"},
+      {"FIntTaskSchedulerAutoThreadLimit", "1"},
+      // Reduce physics overhead aggressively
+      {"FIntPhysicsMaxSubsteps", "2"},
+      {"FIntPhysicsMaxConstraintIterations", "2"},
+      {"FFlagPhysicsThrottleWhenPaused", "True"},
+      {"FFlagPhysicsThrottleWhenHidden", "True"},
+      {"FFlagPhysicsThrottleWhenUnfocused", "True"},
+      // Reduce audio overhead
+      {"FIntAudioDSPBufferSize", "8192"},
+      {"FFlagAudioUseNewApi", "False"},
+      {"FFlagAudioEnableLowLatency", "False"},
+      {"FFlagAudioThrottleWhenBackground", "True"},
+      // Reduce particle/emitter overhead aggressively
+      {"FIntMaxParticles", "200"},
+      {"FIntMaxParticleEmitters", "8"},
+      {"FFlagParticleThrottle", "True"},
+      {"FFlagParticleThrottleWhenPaused", "True"},
+      {"FFlagParticleThrottleWhenHidden", "True"},
+      // Disable heavy Roblox systems
+      {"FFlagDisableClothingSimulation", "True"},
+      {"FFlagDisableHairSimulation", "True"},
+      {"FFlagDisableAccessorySimulation", "True"},
+      {"FFlagDisableFacialAnimation", "True"},
+      {"FFlagDisableChatBubbles", "True"},
+      {"FFlagDisableNameTags", "True"},
+      {"FFlagDisableHealthBars", "True"},
+      {"FFlagDisableDistanceCulling", "False"},
+      {"FFlagDisableFrustumCulling", "False"},
+      {"FFlagDisableOcclusionCulling", "False"},
+      // Reduce UI overhead
+      {"FFlagUIThrottleWhenHidden", "True"},
+      {"FFlagUIThrottleWhenBackground", "True"},
+      {"FIntUIMaxRenderCallsPerFrame", "16"},
+      {"FFlagUIThrottleAnimations", "True"},
+      // Reduce network overhead aggressively
+      {"FIntNetworkTickRate", "20"},
+      {"FFlagNetworkThrottleWhenBackground", "True"},
+      {"FFlagNetworkThrottleWhenUnfocused", "True"},
+      {"FIntNetworkMaxPacketSize", "1024"},
+      // Disable analytics/telemetry services
+      {"FFlagDisableTelemetryService", "True"},
+      {"FFlagDisableAnalyticsService", "True"},
+      {"FFlagDisableCrashReportingService", "True"},
+      {"FFlagDisableEventIngestService", "True"},
+      {"FFlagDisablePerformanceStatsService", "True"},
+      // Reduce asset streaming aggressively
+      {"FFlagAssetStreamingThrottle", "True"},
+      {"FIntAssetStreamingMaxConcurrentRequests", "1"},
+      {"FIntAssetStreamingMaxBandwidthKBps", "512"},
+      // Disable avatar heavy features
+      {"FFlagDisableAvatarClothing", "True"},
+      {"FFlagDisableAvatarAccessories", "True"},
+      {"FFlagDisableAvatarEmotes", "True"},
+      {"FFlagDisableAvatarChat", "True"},
+      {"FFlagDisableAvatarAnimations", "True"},
+      {"FFlagDisableAvatarScaling", "True"},
+      // Reduce memory pressure
+      {"FFlagMemoryPressureThrottle", "True"},
+      {"FIntMemoryPressureThresholdMB", "256"},
+      {"FFlagMemoryPressureAggressiveGC", "True"},
+      // Reduce input polling
+      {"FIntInputPollRateHz", "30"},
+      // Disable background tasks aggressively
+      {"FFlagDisableBackgroundTasks", "True"},
+      {"FFlagDisableIdleTasks", "True"},
+      {"FFlagDisablePeriodicTasks", "True"},
+      {"FFlagDisableHousekeepingTasks", "True"},
+      // Reduce render thread work
+      {"FIntRenderMaxCommandBuffers", "1"},
+      {"FFlagRenderSkipRedundantCommands", "True"},
+      {"FFlagRenderMergeDrawCalls", "True"},
+      {"FFlagRenderThrottleWhenUnfocused", "True"},
+      // ULTRA-AGGRESSIVE rendering optimizations - DISABLE expensive features
+      {"FFlagRenderForceDeferredLighting", "False"},
+      {"FFlagRenderDeferredShading", "False"},
+      {"FFlagRenderTileBasedDeferred", "False"},
+      {"FFlagVulkanEnableRenderPassOptimization", "True"},
+      {"FFlagVulkanUseTimelineSemaphores", "True"},
+      {"FFlagTextureManager2Enabled", "True"},
+      {"FFlagTextureManager2AsyncUpload", "True"},
+      {"FFlagTextureManager2MipGen", "True"},
+      {"FFlagRenderGPUAsyncCompute", "False"},
+      {"FFlagRenderParallelBatchSubmission", "False"},
+      {"FFlagRenderParallelWorkSubmission", "False"},
+      {"FIntRenderMaxDrawCallsPerBatch", "64"},
+      {"FIntRenderMaxVerticesPerBatch", "32768"},
+      {"FFlagRenderCullTransparentObjects", "True"},
+      {"FFlagRenderEarlyZPass", "True"},
+      {"FFlagRenderHiZCulling", "True"},
+      {"FFlagRenderOcclusionQuery", "True"},
+      {"FIntRenderOcclusionQueryFrameDelay", "4"},
+      {"FFlagRenderFrustumCulling", "True"},
+      {"FFlagRenderPortalCulling", "True"},
+      {"FFlagRenderDistanceCulling", "True"},
+      {"FIntRenderMaxLightsPerTile", "4"},
+      {"FIntRenderMaxShadowsPerTile", "2"},
+      {"FFlagRenderVariableRateShading", "False"},
+      {"FFlagRenderMeshShader", "False"},
+      {"FFlagRenderTaskShader", "False"},
+      // Additional ultra-low-end optimizations
+      {"FFlagRenderDisableSpecular", "True"},
+      {"FFlagRenderDisableReflections", "True"},
+      {"FFlagRenderDisableShadows", "True"},
+      {"FFlagRenderDisablePostProcessing", "True"},
+      {"FFlagRenderDisableBloom", "True"},
+      {"FFlagRenderDisableMotionBlur", "True"},
+      {"FFlagRenderDisableSSAO", "True"},
+      {"FFlagRenderDisableVolumetricLighting", "True"},
+      {"FFlagRenderDisableParticleLighting", "True"},
+      // DISABLE HEAVY/MODERN LIGHTING FEATURES
+      {"FFlagFutureIsBright", "False"},
+      {"FFlagFutureIsBrightShadows", "False"},
+      {"FFlagFutureIsBrightPhase2", "False"},
+      {"FFlagLightGrid", "False"},
+      {"FFlagVoxelLighting", "False"},
+      {"FFlagDynamicLighting", "False"},
+      {"FFlagGlobalIllumination", "False"},
+      {"FFlagAmbientOcclusion", "False"},
+      {"FFlagScreenSpaceReflections", "False"},
+      {"FFlagScreenSpaceAmbientOcclusion", "False"},
+      {"FFlagGodRays", "False"},
+      {"FFlagLightShafts", "False"},
+      {"FFlagCrepuscularRays", "False"},
+      {"FFlagSubsurfaceScattering", "False"},
+      {"FFlagAtmosphericEffects", "False"},
+      {"FFlagEnvironmentLighting", "False"},
+      {"FFlagHDR", "False"},
+      {"FFlagEyeAdaptation", "False"},
+      {"FFlagToneMapping", "False"},
+      {"FFlagColorCorrection", "False"},
+      {"FFlagVignette", "False"},
+      {"FFlagDepthOfField", "False"},
+      {"FFlagChromaticAberration", "False"},
+      {"FFlagLensFlare", "False"},
+      {"FFlagRenderDisableSpecular", "True"},
+      {"FFlagRenderDisableReflections", "True"},
+      {"FFlagRenderDisableShadows", "True"},
+      {"FFlagRenderDisablePostProcessing", "True"},
+      {"FFlagRenderDisableBloom", "True"},
+      {"FFlagRenderDisableMotionBlur", "True"},
+      {"FFlagRenderDisableSSAO", "True"},
+      {"FFlagRenderDisableVolumetricLighting", "True"},
+      {"FFlagRenderDisableParticleLighting", "True"},
+      {"FFlagRenderForceForwardRendering", "True"},
+      {"FFlagRenderMinimizeStateChanges", "True"},
+      {"FFlagRenderBatchSimilarObjects", "True"},
+      {"FFlagRenderUseInstancing", "True"},
+      // === EVEN MORE AGGRESSIVE ULTRA-LOW-END OPTIMIZATIONS ===
+      // Terrain: disable grass, reduce detail to absolute minimum
+      {"FIntFRMMinGrassDistance", "0"},
+      {"FIntFRMMaxGrassDistance", "0"},
+      {"FIntRenderGrassDetailStrands", "0"},
+      {"FIntRenderGrassHeightScaler", "0"},
+      // Terrain material: force lowest quality
+      {"FIntTerrainArraySliceSize", "1"},
+      // Particles: reduce to absolute minimum
+      {"FIntMaxParticles", "50"},
+      {"FIntMaxParticleEmitters", "4"},
+      {"FFlagParticleThrottleWhenUnfocused", "True"},
+      // Avatar: disable ALL non-essential features
+      {"FFlagDisableAvatarClothing", "True"},
+      {"FFlagDisableAvatarAccessories", "True"},
+      {"FFlagDisableAvatarEmotes", "True"},
+      {"FFlagDisableAvatarChat", "True"},
+      {"FFlagDisableAvatarAnimations", "True"},
+      {"FFlagDisableAvatarScaling", "True"},
+      {"FFlagDisableNameTags", "True"},
+      {"FFlagDisableHealthBars", "True"},
+      {"FFlagDisableChatBubbles", "True"},
+      {"FFlagDisableFacialAnimation", "True"},
+      // Clothing/Hair simulation: already disabled, ensure
+      {"FFlagDisableClothingSimulation", "True"},
+      {"FFlagDisableHairSimulation", "True"},
+      {"FFlagDisableAccessorySimulation", "True"},
+      // Physics: throttle even more aggressively
+      {"FFlagPhysicsThrottleWhenUnfocused", "True"},
+      {"FIntPhysicsMaxSubsteps", "2"},
+      {"FIntPhysicsMaxConstraintIterations", "2"},
+      {"DFIntSimMidPhaseContactPipelineBatchSize", "64"},
+      // Network: absolute minimum
+      {"FIntNetworkTickRate", "15"},
+      {"FIntNetworkMaxPacketSize", "512"},
+      {"FFlagNetworkThrottleWhenBackground", "True"},
+      {"FFlagNetworkThrottleWhenUnfocused", "True"},
+      {"FFlagNetworkThrottleWhenPaused", "True"},
+      // Audio: minimal
+      {"FIntMaxAudibleSoundChannels", "4"},
+      {"FIntAudioDSPBufferSize", "16384"},
+      {"FFlagAudioEnableLowLatency", "False"},
+      {"FFlagAudioThrottleWhenBackground", "True"},
+      {"FFlagAudioThrottleWhenUnfocused", "True"},
+      // UI: absolute minimum
+      {"FIntUIMaxRenderCallsPerFrame", "8"},
+      {"FFlagUIThrottleWhenHidden", "True"},
+      {"FFlagUIThrottleWhenBackground", "True"},
+      {"FFlagUIThrottleAnimations", "True"},
+      {"FFlagUIThrottleWhenUnfocused", "True"},
+      // Asset streaming: absolute minimum
+      {"FIntAssetStreamingMaxConcurrentRequests", "1"},
+      {"FIntAssetStreamingMaxBandwidthKBps", "256"},
+      {"FFlagAssetStreamingThrottle", "True"},
+      {"FFlagAssetStreamingThrottleWhenBackground", "True"},
+      // Memory pressure: aggressive
+      {"FIntMemoryPressureThresholdMB", "128"},
+      {"FFlagMemoryPressureAggressiveGC", "True"},
+      {"FFlagMemoryPressureThrottle", "True"},
+      // Background tasks: disable ALL
+      {"FFlagDisableBackgroundTasks", "True"},
+      {"FFlagDisableIdleTasks", "True"},
+      {"FFlagDisablePeriodicTasks", "True"},
+      {"FFlagDisableHousekeepingTasks", "True"},
+      // Scheduler: absolute minimum threads
+      {"FIntTaskSchedulerThreadMin", "0"},
+      {"FIntTaskSchedulerAsyncTasksMinimumThreadCount", "1"},
+      {"FIntTaskSchedulerAutoThreadLimit", "1"},
+      {"FIntTaskSchedulerMaxTempArenaSizeBytes", "4194304"},
+      // GC: even more aggressive for 2-core
+      {"FIntLuauGcStepMultiplier", "400"},
+      {"FIntLuauGcGoalRatio", "400"},
+      {"FIntLuauGcGoalCore", "150"},
+      {"FIntLuauGcStartupWorkingSetMb", is_ultra_low_end ? "8" : "16"},
+      {"FIntLuaGcMaxKb", "32768"},
+      {"FFlagLuauIncrementalGC", "True"},
+      {"FFlagLuauStartupGcSuppression", "True"},
+      // Render thread: absolute minimum
+      {"FIntRenderMaxCommandBuffers", "1"},
+      {"FFlagRenderSkipRedundantCommands", "True"},
+      {"FFlagRenderMergeDrawCalls", "True"},
+      {"FFlagRenderThrottleWhenUnfocused", "True"},
+      {"FIntRenderMaxDrawCallsPerBatch", "32"},
+      {"FIntRenderMaxVerticesPerBatch", "16384"},
+      // Shadow: disable completely
+      {"FIntRenderShadowIntensity", "0"},
+      {"FIntRenderShadowMapDepthCacheMemLimit", "1"},
+      {"FIntTM2ShadowMapMaxMips", "0"},
+      {"FFlagRenderAllocateShadowMapResourcesOnDemand", "True"},
+      // Disable ALL post-processing and modern lighting
+      {"FFlagRenderDisablePostProcessing", "True"},
+      {"FFlagRenderDisableBloom", "True"},
+      {"FFlagRenderDisableMotionBlur", "True"},
+      {"FFlagRenderDisableSSAO", "True"},
+      {"FFlagRenderDisableVolumetricLighting", "True"},
+      {"FFlagRenderDisableParticleLighting", "True"},
+      {"FFlagRenderDisableSpecular", "True"},
+      {"FFlagRenderDisableReflections", "True"},
+      {"FFlagRenderDisableShadows", "True"},
+      {"FFlagRenderForceForwardRendering", "True"},
+      {"FFlagFutureIsBright", "False"},
+      {"FFlagFutureIsBrightShadows", "False"},
+      {"FFlagFutureIsBrightPhase2", "False"},
+      {"FFlagVoxelLighting", "False"},
+      {"FFlagDynamicLighting", "False"},
+      {"FFlagGlobalIllumination", "False"},
+      {"FFlagAmbientOcclusion", "False"},
+      {"FFlagScreenSpaceReflections", "False"},
+      {"FFlagScreenSpaceAmbientOcclusion", "False"},
+      {"FFlagGodRays", "False"},
+      {"FFlagLightShafts", "False"},
+      {"FFlagCrepuscularRays", "False"},
+      {"FFlagSubsurfaceScattering", "False"},
+      {"FFlagAtmosphericEffects", "False"},
+      {"FFlagEnvironmentLighting", "False"},
+      {"FFlagHDR", "False"},
+      {"FFlagEyeAdaptation", "False"},
+      {"FFlagToneMapping", "False"},
+      {"FFlagColorCorrection", "False"},
+      {"FFlagVignette", "False"},
+      {"FFlagDepthOfField", "False"},
+      {"FFlagChromaticAberration", "False"},
+      {"FFlagLensFlare", "False"},
+      {"FFlagDebugSkyGray", "True"},
+      // Culling: ensure ALL enabled
+      {"FFlagRenderFrustumCulling", "True"},
+      {"FFlagRenderPortalCulling", "True"},
+      {"FFlagRenderDistanceCulling", "True"},
+      {"FFlagRenderHiZCulling", "True"},
+      {"FFlagRenderOcclusionQuery", "True"},
+      {"FIntRenderOcclusionQueryFrameDelay", "8"},
+      {"FFlagRenderEarlyZPass", "True"},
+      {"FFlagRenderCullTransparentObjects", "True"},
+      // Mesh/Geometry: aggressive LOD and compression
+      {"FFlagMeshLOD", "True"},
+      {"FFlagMeshCompression", "True"},
+      {"FFlagPhysicsMeshCompression", "True"},
+      {"FFlagSupportMeshLOD", "True"},
+      {"FFlagMeshLodApplyGeomMeshOptimizer", "True"},
+      {"FFlagAdaptiveMeshCacheSizeForAndroid", "True"},
+      {"FIntDefaultMeshCacheSizeMB", is_ultra_low_end ? "4" : "8"},
+      {"FIntRenderMeshOrphanBudgetMB", "1"},
+      {"FIntTerrainGpuMeshMemoryTargetMib", is_ultra_low_end ? "2" : "4"},
+      {"FIntAvatarMeshMemoryMax", is_ultra_low_end ? "2097152" : "4194304"},
+      {"FIntSmoothTerrainPhysicsCacheSize", is_ultra_low_end ? "2" : "4"},
+      // Texture: absolute minimum budgets
+      {"FIntRenderTextureTotalBudgetMB", is_ultra_low_end ? "8" : "16"},
+      {"FIntRenderTextureOrphanBudgetMB", "1"},
+      {"FIntRenderTextureCompositorBudget", is_ultra_low_end ? "2" : "4"},
+      {"FIntTextureCompositorActiveJobs", "1"},
+      {"FIntTextureCompositorLowResFactor", "16"},
+      {"FIntTextureCompositorMeshCache", is_ultra_low_end ? "1" : "2"},
+      {"FIntAvatarTextureMemoryMax", is_ultra_low_end ? "1048576" : "2097152"},
+      {"FFlagUITextureCompressionDesktop", "True"},
+      {"FFlagTCTextureCompressionDesktop", "True"},
+      {"FFlagUITextureUncompressed", "False"},
+      {"FFlagDebugTerrainVTCompressedTextures", "True"},
+      {"FFlagVulkanCompressedTextureAliasing", "True"},
+      {"FFlagEnableMultiVETextureManagerSharing", "True"},
+      // Disable GPU async compute (hurts on integrated)
+      {"FFlagRenderGPUAsyncCompute", "False"},
+      {"FFlagRenderParallelBatchSubmission", "False"},
+      {"FFlagRenderParallelWorkSubmission", "False"},
+      {"FFlagVulkanEnableRenderPassOptimization", "True"},
+      {"FFlagVulkanUseTimelineSemaphores", "True"},
+      // Disable telemetry/analytics completely
+      {"FFlagDisableTelemetryService", "True"},
+      {"FFlagDisableAnalyticsService", "True"},
+      {"FFlagDisableCrashReportingService", "True"},
+      {"FFlagDisableEventIngestService", "True"},
+      {"FFlagDisablePerformanceStatsService", "True"},
+      // Input: reduce polling
+      {"FIntInputPollRateHz", "20"},
+  }};
+  apply_settings(rendering_settings);
+  // Absolute-minimum caches, applied on every host.
+  const std::array<ClientSetting, 8> memory_settings = {{
+      {"FIntAssetProviderThreads", "1"},
+      {"FIntDefaultMeshCacheSizeMB", "8"},
+      {"FIntRenderTextureTotalBudgetMB", "16"},
+      {"FIntRenderTextureCompositorBudget", "4"},
+      {"FIntInitialAudioAssetCacheSize", "4"},
+      {"FIntProjectedMaxBytesUsedForSoundsMB", "4"},
+      {"FIntAvatarMeshMemoryMax", "4194304"},
+      {"FIntAvatarTextureMemoryMax", "4194304"},
+  }};
+  apply_settings(memory_settings);
+
   *merged_json = overrides.dump();
   return true;
 }

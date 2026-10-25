@@ -1,28 +1,32 @@
 <!-- Modified by vii from komaruworld/mocktail. See README "About this fork". -->
 # FAQ
 
-## How do I turn Discord RPC off?
+## How do I turn Discord RPC on (or off)?
 
-RPC is on by default. It never signs in to Discord and never reads an
-account token. To turn it off, launch Mokted once to create the config,
-then close it. Open `config.yaml`:
+RPC is **off by default** in this fork. That avoids socket polling and the
+16 MB worker thread. It never signs in to Discord and never reads an account
+token.
+
+To turn it on, launch Mokted once to create the config, then close it. Open
+`config.yaml`:
 
 - Native / AppImage: `~/.config/mocktail/config.yaml`
 - Flatpak: `~/.var/app/io.github.sdqfrmnsyh.mokted/config/mocktail/config.yaml`
 
 For native installs, a custom `$XDG_CONFIG_HOME` replaces `~/.config`.
 
-Set `enabled` to `false` under `integrations.discord_rpc`. If the block is
-missing, add it under the existing `integrations` section:
+Set `enabled` to `true` under `integrations.discord_rpc`:
 
 ```yaml
 integrations:
   discord_rpc:
-    enabled: false
+    enabled: true
 ```
 
-Save the file and restart Mokted. Set `enabled` back to `true` to turn
-RPC on again.
+Save the file and restart Mokted. Set `enabled` back to `false` to turn RPC
+off again. `show_place_name`, `show_elapsed_time` and `join.enabled` all
+default to `false` as well; enable them individually if you want that
+information shown.
 
 ## Can Discord count Mokted as Roblox play time or quests?
 

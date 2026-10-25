@@ -13,10 +13,16 @@ namespace runtime {
 namespace {
 
 constexpr std::uint64_t kMebibyte = 1024U * 1024U;
+// For ultra-low-end (Stoney Ridge class): detect < 4GB total RAM
+constexpr std::uint64_t kUltraLowMemoryHostBytes = 4U * 1024U * kMebibyte;
 constexpr std::uint64_t kLowMemoryHostBytes = 8U * 1024U * kMebibyte;
-constexpr std::uint64_t kLowMemoryBudgetBytes = 64U * kMebibyte;
-constexpr std::uint64_t kMinimumBudgetBytes = 256U * kMebibyte;
-constexpr std::uint64_t kMaximumBudgetBytes = 1536U * kMebibyte;
+// MAXIMUM AGGRESSIVE: 16 MB for Stoney Ridge / integrated graphics with < 4GB RAM
+constexpr std::uint64_t kUltraLowMemoryBudgetBytes = 16U * kMebibyte;
+constexpr std::uint64_t kLowMemoryBudgetBytes = 32U * kMebibyte;
+// DEEP OPTIMIZATION: Ultra-low minimum for integrated graphics with 2GB VRAM limit
+constexpr std::uint64_t kMinimumBudgetBytes = 16U * kMebibyte;
+// Cap at 256MB for integrated graphics - they can't address more efficiently
+constexpr std::uint64_t kMaximumBudgetBytes = 256U * kMebibyte;
 constexpr std::string_view kVideoMemoryOverride =
     "FIntRenderForceVideoMemorySize";
 
@@ -44,10 +50,16 @@ std::uint64_t DetectHostMemoryBytes() {
 
 std::uint64_t CalculateTextureMemoryBudgetBytes(
     std::uint64_t host_memory_bytes) {
+  // ULTRA-LOW-END: Stoney Ridge / integrated graphics with < 4GB RAM
+  if (host_memory_bytes < kUltraLowMemoryHostBytes) {
+    return kUltraLowMemoryBudgetBytes;
+  }
   if (host_memory_bytes < kLowMemoryHostBytes) {
     return kLowMemoryBudgetBytes;
   }
-  return std::clamp(host_memory_bytes / 8U, kMinimumBudgetBytes,
+  // MAXIMUM AGGRESSIVE: Use 1/32 of host memory for integrated graphics
+  // They have shared system memory - allocating too much starves the CPU
+  return std::clamp(host_memory_bytes / 32U, kMinimumBudgetBytes,
                     kMaximumBudgetBytes);
 }
 

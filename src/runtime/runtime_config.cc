@@ -282,11 +282,14 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
   config.frame_rate_ = ParseFrameRatePolicy(
       environment.GetOr("MOCKTAIL_FRAME_RATE_LIMIT", "-1"));
   config.vsync_mode_ = environment.GetOr("MOCKTAIL_VSYNC", "auto");
+  // Ultra-low-end defaults for this fork. The generated config.yaml spells
+  // these out too; these fallbacks keep the same values when a key is missing
+  // or the config file could not be read.
   config.performance_ = ParsePerformancePolicy(
-      environment.GetOr("MOCKTAIL_MULTITHREADED_RENDERING", "0"),
-      environment.GetOr("MOCKTAIL_MEMORY_LIMIT_MB", "0"),
-      environment.GetOr("MOCKTAIL_GAMEMODE", "auto"),
-      environment.GetOr("MOCKTAIL_PHYSICS_WORKER_MODE", "throughput"));
+      environment.GetOr("MOCKTAIL_MULTITHREADED_RENDERING", "1"),
+      environment.GetOr("MOCKTAIL_MEMORY_LIMIT_MB", "3072"),
+      environment.GetOr("MOCKTAIL_GAMEMODE", "on"),
+      environment.GetOr("MOCKTAIL_PHYSICS_WORKER_MODE", "latency"));
   config.audio_output_device_ = environment.GetOr(
       "MOCKTAIL_AUDIO_OUTPUT_DEVICE", config.audio_output_device_);
   config.audio_output_device_valid_ =
@@ -407,7 +410,7 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
 
   const std::string etc2_mode =
       environment.GetOr("MOCKTAIL_ETC2_EMULATION", "auto");
-  if (etc2_mode == "auto" || etc2_mode == "native") {
+  if (etc2_mode == "auto" || etc2_mode == "native" || etc2_mode == "off") {
     config.etc2_emulation_mode_ = etc2_mode;
   } else {
     config.etc2_emulation_mode_ = "auto";

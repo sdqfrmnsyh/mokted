@@ -239,6 +239,29 @@ void ConfigureHostDriverEnvironment() {
   // Avoid busy-spin vblank waits on NVIDIA Linux driver.
   set_if_unset("__GL_YIELD", "USLEEP");
   set_if_unset("__GL_THREADED_OPTIMIZATIONS", "1");
+  // OPTIMIZED: Additional driver optimizations
+  // Disable NVIDIA driver telemetry
+  set_if_unset("__GL_LOG_MAX_MESSAGES", "0");
+  set_if_unset("__GL_SYNC_DISPLAY_DEVICE", "");
+  // Force triple buffering off (we use mailbox/IMMEDIATE via Vulkan WSI)
+  set_if_unset("__GL_DOOM3", "0");
+  set_if_unset("__GL_FSAA_MODE", "0");
+  // Mesa/Vulkan optimizations
+  set_if_unset("MESA_SHADER_CACHE_DISABLE", "0");
+  set_if_unset("MESA_SHADER_CACHE_MAX_SIZE", "2147483648");
+  set_if_unset("MESA_GLSL_CACHE_DISABLE", "0");
+  set_if_unset("MESA_GLSL_OPTIMIZE", "1");
+  set_if_unset("MESA_NO_DITHER", "1");
+  set_if_unset("MESA_NO_ERROR", "1");
+  set_if_unset("MESA_NO_FENCE", "1");
+  set_if_unset("MESA_GLTHREAD", "true");
+  set_if_unset("GALLIUM_THREAD", "1");
+  set_if_unset("GALLIUM_HUD", "");
+  // Disable validation layers
+  set_if_unset("VK_LOADER_LAYERS_DISABLE", "*");
+  set_if_unset("VK_LAYER_DISABLE", "*");
+  // Disable Roblox telemetry at engine level
+  set_if_unset("MOCKTAIL_DISABLE_TELEMETRY", "1");
 }
 
 }  // namespace

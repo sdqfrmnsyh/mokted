@@ -3,11 +3,49 @@
 What Mokted does to your CPU and GPU, which knobs change it, and how to
 measure rather than guess.
 
+## Optimized Defaults (Hardcoded)
+
+**All ultra-low-end optimizations are now hardcoded as defaults in the binary.**
+No config file or environment variables needed. Just run `mokted`.
+
+### Optimized Default Values:
+
+| Setting | Default | Rationale |
+|---------|---------|-----------|
+| `graphics.backend` | `direct-vulkan` | Fastest path on AMD/Intel with a working Vulkan driver. |
+| `graphics.frame_rate_limit` | `-1` | No cap: Roblox's own Basic Settings owns the limit. |
+| `graphics.vsync` | `auto` | Lowest-latency synchronized present mode unless the cap is `unlimited`. |
+| `graphics.etc2_emulation` | `auto` | Emulate ETC2 only when the GPU cannot decode it. `off` disables it entirely. |
+| `performance.multithreaded_rendering` | `true` | Size scheduler/render queues from the physical cores. |
+| `performance.physics_worker_mode` | `latency` | Coalesce midphase work; capped at 1 worker for 2C/2T. |
+| `performance.memory_limit_mb` | `3072` | RAM cap for 7–8 GB systems. `0` disables it. |
+| `performance.gamemode` | `on` | Keep Feral GameMode's governor and priority boost. |
+| `integrations.discord_rpc.enabled` | `false` | No socket polling and no 16 MB worker thread. |
+
+### Hardcoded Ultra-Low-End Optimizations:
+
+These client settings are applied on every launch and are not tiered by RAM.
+
+| Category | Optimizations |
+|----------|---------------|
+| **VSync** | `auto` selects the lowest-latency synchronized present mode (mailbox / fifo-latest-ready). |
+| **Physics** | `latency` mode, substeps=2, iterations=2, midphase batch=128, throttle when paused/hidden/unfocused. |
+| **Memory** | 3072 MB process cap, 16 MB texture budget, mip bias 5 (1/1024). |
+| **Textures** | `DFIntTextureQualityOverride=1` (lowest), `DFFlagTextureQualityOverrideEnabled=True`, `FIntDebugFRMQualityLevelOverride=1`, 1×1 UI textures. |
+| **Rendering** | 1× MSAA, forward rendering, all culling on, all heavy effects OFF. |
+| **CPU** | particles=50 with 4 emitters, network_tick=15, input poll=20 Hz, background tasks off. |
+| **GC** | StepMul=400, GoalRatio=400, GoalCore=150, incremental GC, startup suppression. |
+| **Scheduler** | thread_min=0, async_min=1, auto_limit=1 (1 worker max). |
+| **Audio** | 4 output channels, 16384-sample DSP buffer. |
+
+---
+
 ## GameMode core pinning
 
 Mokted asks Feral GameMode for a performance session at startup
-(`performance.gamemode`, default `auto`). GameMode raises the CPU governor and
-the process priority, which helps.
+(`performance.gamemode`, default `on`). GameMode raises the CPU governor and
+the process priority, which helps. `on` keeps the session, pinning included;
+`auto` and `off` behave differently, described below.
 
 On a CPU with a wide spread of per-core maximum frequencies — Intel P-core and
 E-core parts, AMD parts with preferred cores — GameMode also pins the process
@@ -19,8 +57,10 @@ near their boost ceiling and run hot while the rest of the chip idles.
 GameMode re-applies the pin roughly every 5 seconds, so widening the mask from
 inside the process does not hold. Releasing the request does release the pin.
 
-Under `auto`, Mokted therefore checks its CPU affinity immediately after the
-request. If GameMode narrowed it, Mokted ends the request and prints:
+On a 2C/2T part there is no fast/slow core spread, so the default `on` simply
+keeps the session. On a hybrid CPU, choose `auto`: Mokted then checks its CPU
+affinity immediately after the request, and if GameMode narrowed it, Mokted
+ends the request and prints:
 
 ```
   [gamemode] released: it pinned this process to a subset of the CPUs, ...

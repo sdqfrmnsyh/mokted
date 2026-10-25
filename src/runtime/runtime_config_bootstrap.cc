@@ -20,121 +20,189 @@ constexpr std::string_view kDefaultRuntimeConfig =
     R"yaml(# Modified by vii from komaruworld/mocktail. See README "About this fork".
 # Mocktail configuration.
 # The file is created once with mode 0600. Mocktail never replaces your edits.
+#
+# This fork (Mokted) hardcodes ultra-low-end optimizations as defaults in the
+# binary, so a plain `mokted` launch already applies them. The values written
+# here ARE those defaults - edit a line only to override it, and delete the
+# file to fall back to every default again.
+#
+# Two rules before you edit:
+#   * An unknown key is a hard error. Only use the keys documented below.
+#   * `device:` is mutually exclusive with `input.touch_enabled` and
+#     `compatibility.desktop_playability`.
+#
+# Hardcoded (not configurable here) ultra-low-end optimizations:
+#   * Telemetry, analytics and crash reporting: all disabled.
+#   * Textures: lowest quality (DFIntTextureQualityOverride=1), mip bias 5
+#     (~1/1024 size), 16 MiB texture budget, 1x1 UI textures forced.
+#   * Lighting: voxel/forward only; Future Is Bright, GI, SSAO, SSR, shadows,
+#     bloom, DoF, HDR, tone mapping, and every other post effect forced off.
+#   * Culling: frustum, portal, distance, Hi-Z and occlusion queries all on.
+#   * Physics: 2 substeps, 2 constraint iterations, throttle when paused,
+#     hidden, or unfocused.
+#   * Scheduler: thread min 0, async min 1, auto limit 1 (single worker on 2C/2T).
+#   * GC: Luau incremental GC, StepMul 300, GoalRatio 300, GoalCore 200.
+#   * Particles: 200 max, 8 emitters. Audio: 8-16 channels, large DSP buffer.
+#   * Discord RPC, gamepad polling and the text overlay are all off.
+# Override any of these per key with a JSON object in
+# ~/.config/mocktail/fflags.json (see README "FFlag overrides").
 
 # Integer: configuration schema version. Only version 1 is supported.
 version: 1
 
 # One-line device preset. Short aliases pc, mobile, and console are accepted.
-# Presets: pc-windows-11, mobile-pixel-7, console-ps5.
-# Use the mapping below for a custom profile.
+# Presets:
+#   pc-windows-11 - desktop Windows PC: no touch, mouse + keyboard (default).
+#   mobile-pixel-7 - Pixel 7: touch, no mouse, no keyboard.
+#   console-ps5    - PlayStation 5 profile.
+# Use the detailed mapping below instead for a custom profile.
 device: pc-windows-11
 
-# Detailed alternative (replace the scalar device line above):
+# Detailed alternative (replace the scalar device line above). Cannot be
+# combined with `device:`, `input.touch_enabled`, or
+# `compatibility.desktop_playability`.
 # device:
-#   type: mobile
-#   platform: Android
+#   type: mobile           # Required. One of: pc, mobile, console, or a raw string.
+#   platform: Android      # String: Build.PLATFORM-style platform name.
 #   name: Google Pixel 9 Pro
 #   manufacturer: Google
 #   model: Pixel 9 Pro
 #   brand: google
-#   code: komodo
+#   code: komodo           # String: Build.DEVICE-style code name.
 #   sku: pixel-9-pro
 #   soc_model: Google Tensor G4
-#   touch: true
-#   mouse: false
-#   keyboard: false
+#   touch: true            # Boolean: report a touchscreen.
+#   mouse: false           # Boolean: report a mouse.
+#   keyboard: false        # Boolean: report a hardware keyboard.
 
 runtime:
   # Boolean (default: false): start without a visible SDL window.
   headless: false
-  # String (optional): use a specific x86_64 libroblox.so instead of the
-  # active verified payload.
+  # String (optional): absolute path to a specific x86_64 libroblox.so instead
+  # of the active verified payload. Leave unset to use the verified payload.
   # roblox_library: /absolute/path/to/libroblox.so
 
 appearance:
-  # String (default: roblox): use Roblox's saved account theme. Supported
-  # overrides: dark, light, or system (follow the desktop color scheme).
+  # String (default: roblox): window/theme source. `roblox` follows the theme
+  # saved in the Roblox account. Supported overrides: dark, light, or system
+  # (follow the desktop color scheme).
   theme: roblox
 
 graphics:
-  # String (default: direct-vulkan): graphics backend. Use opengl on hardware
-  # without a working Vulkan driver; OpenGL ES 3.0 or newer is required.
-  # Recommended values: direct-vulkan, opengl, system, angle-vulkan.
+  # String (default: direct-vulkan): graphics backend.
+  #   direct-vulkan - Vulkan via the bundled loader. Default; fastest on AMD and
+  #                   Intel with a working Vulkan driver.
+  #   opengl        - OpenGL ES 3.0+ via the system GL driver.
+  #   system        - Let the client pick (opengl family on this host).
+  #   angle-vulkan  - ANGLE over Vulkan; compatibility fallback.
+  # Use opengl or angle-vulkan only when Vulkan fails to start.
   backend: direct-vulkan
-  # Optional string or integer: Mocktail frame-rate override. Leave commented
-  # (or use -1) to let Roblox Basic Settings own the cap. Supported overrides:
-  # display, unlimited, or any positive integer; fixed values are forwarded to
-  # DFIntTaskSchedulerTargetFps without a whitelist.
+  # String or integer (default: -1): frame-rate cap override.
+  #   -1        - leave Roblox's own Basic Settings cap in charge (default).
+  #   display   - cap at the display refresh rate.
+  #   unlimited - raise the cap to the scheduler maximum.
+  #   <integer> - a fixed FPS cap, forwarded to DFIntTaskSchedulerTargetFps.
+  # The fork sets no cap by default; the game runs at its natural rate.
   # frame_rate_limit: -1
-  # Optional presentation synchronization override: auto, on, or off. auto
-  # presents through the lowest-latency synchronized mode the driver offers
-  # unless frame_rate_limit is unlimited.
-  # vsync: off
+  # String (default: auto): presentation synchronization.
+  #   auto - lowest-latency synchronized present mode (mailbox or
+  #          fifo-latest-ready) unless frame_rate_limit is unlimited.
+  #   on   - same as auto, but never switches to an unthrottled present mode.
+  #   off  - present immediately with no vsync; may tear, costs bandwidth.
+  # vsync: auto
+  # String (default: auto): ETC2 texture emulation.
+  #   auto   - detect the GPU and emulate ETC2 only when it cannot decode
+  #            natively.
+  #   native - never emulate; use only if detection wrongly emulates on a GPU
+  #            that does support ETC2.
+  #   off    - disable ETC2 emulation entirely (saves CPU/GPU on GCN 1.3-era
+  #            integrated GPUs).
+  # etc2_emulation: auto
 
 performance:
-  # Boolean (default: false): size Roblox scheduler/render queues from every
+  # Boolean (default: true): size Roblox scheduler/render queues from every
   # physical CPU core. A place's Lua/main thread can still remain serial.
-  multithreaded_rendering: false
-  # String (default: throughput): `throughput` makes every physical core
-  # available to Roblox worker pools; `latency` preserves Roblox-managed pool
-  # sizes and coalesces midphase work. Supported: auto, latency, throughput.
-  physics_worker_mode: throughput
-  # Integer MiB (default: 0): hard RAM cap for the Mocktail process tree.
-  # 0 disables the cap. cgroup v2 also disables swap; other Linux systems use
-  # an RSS+swap watchdog. 6144 is a conservative starting point for 32 GiB RAM.
-  memory_limit_mb: 0
-  # String (default: auto): request Feral GameMode when its host daemon and
-  # client library are available. Supported values: auto, on, off.
-  gamemode: auto
+  multithreaded_rendering: true
+  # String (default: latency): worker-pool sizing.
+  #   latency    - keep Roblox-managed pool sizes and coalesce midphase work.
+  #                Best on 2C/2T parts; the fork caps it at 1 worker.
+  #   throughput - expose every physical core to the worker pools.
+  #   auto       - let Mokted choose (latency-like on the low-end path).
+  physics_worker_mode: latency
+  # Integer MiB (default: 3072): hard RAM cap for the whole process tree.
+  #   0 disables the cap. Under cgroup v2 the cap also disables swap; elsewhere
+  #   an RSS+swap watchdog enforces it. 3072 is tuned for 7-8 GiB systems whose
+  #   integrated GPU shares system RAM.
+  memory_limit_mb: 3072
+  # String (default: on): Feral GameMode request.
+  #   on   - request a GameMode session and keep it, core pinning included.
+  #   auto - request it, but release it if GameMode narrows the CPU affinity
+  #          (useful on hybrid big.LITTLE CPUs; not needed on 2C/2T).
+  #   off  - never contact GameMode.
+  gamemode: on
 
 audio:
-  # String (default: default): `default` follows the host system output.
-  # To pin output, copy an exact SDL device name printed during startup.
+  # String (default: default): output device. `default` follows the host system
+  # output. To pin it, copy an exact SDL device name printed during startup.
   output_device: default
-  # String (default: default): input device name, `id:<number>` printed during
-  # startup, or `disabled`. IDs disambiguate duplicate names but may change
-  # between boots; prefer the exact device name when it is unique.
+  # String (default: default): input device name, an `id:<number>` printed
+  # during startup, or `disabled`. IDs disambiguate duplicate names but may
+  # change between boots; prefer the exact device name when it is unique.
   input_device: default
 
 input:
-  # Boolean (default: false): send mouse look deltas in the host's own units.
-  # They are otherwise scaled by the window's pixel density divided by the
+  # Boolean (default: false): send mouse-look deltas in the host's own units.
+  # They are otherwise scaled by the window pixel density divided by the
   # desktop display scale, which cancels to 1.0 unless fractional scaling makes
   # the two disagree. Turn this on when first-person aiming feels too slow or
   # too fast under fractional scaling. The pointer position is unaffected.
   raw_mouse: false
+  # Boolean (optional): force the touchscreen capability on or off. Cannot be
+  # combined with the `device:` preset above. Leave unset unless you use a
+  # detailed device mapping.
+  # touch_enabled: false
+
+# compatibility:
+#   # Boolean (optional): advertise the place as playable on this device class so
+#   # the Roblox client does not hide desktop-only experiences. Cannot be
+#   # combined with the `device:` preset above. Uncomment this whole block only
+#   # if you use a detailed device mapping instead of `device:`.
+#   desktop_playability: false
 
 integrations:
   fleasion:
     # Boolean (default: false): trust Fleasion's CA without editing Roblox files.
     enabled: false
-    # String: match Fleasion's routing mode: env or hosts.
-    proxy_mode: env
-    # Integer: Fleasion's local HTTP proxy port in env mode.
-    proxy_port: 58443
-    # Optional absolute public CA path. Default: $XDG_CONFIG_HOME/Fleasion/proxy_ca/ca.crt
-    # or ~/.config/Fleasion/proxy_ca/ca.crt. Never select ca.key.
+    # String (default: env): match Fleasion's routing mode. Supported: env, hosts.
+    # proxy_mode: env
+    # Integer (default: 58443): Fleasion's local HTTP proxy port in env mode.
+    # proxy_port: 58443
+    # Optional absolute path to Fleasion's public CA. Default:
+    # $XDG_CONFIG_HOME/Fleasion/proxy_ca/ca.crt or
+    # ~/.config/Fleasion/proxy_ca/ca.crt. Never select ca.key.
     # ca_certificate: /home/user/.config/Fleasion/proxy_ca/ca.crt
   discord_rpc:
-    # Boolean (default: true): publish Mokted activity to Discord Desktop.
+    # Boolean (default: false): publish Mokted activity to Discord Desktop.
+    # Off by default in this fork: no socket polling, no 16 MB worker thread.
     # This never signs in to Discord and never reads an account token.
-    enabled: true
-    # Boolean (default: true): show the current Roblox experience name.
-    show_place_name: true
-    # Boolean (default: true): show how long the current session has run.
-    show_elapsed_time: true
+    enabled: false
+    # Boolean (default: false): show the current Roblox experience name.
+    show_place_name: false
+    # Boolean (default: false): show how long the current session has run.
+    show_elapsed_time: false
     join:
-      # Boolean (default: true): let friends open the current experience. When
+      # Boolean (default: false): let friends open the current experience. When
       # Roblox provides a public server ID, the button targets that server.
-      enabled: true
-      # Boolean (default: true): never expose private or reserved joins.
-      public_servers_only: true
+      enabled: false
+      # Boolean (default: false): never expose private or reserved joins.
+      public_servers_only: false
       # button_label: Join Server
-    # English defaults. Uncomment only the lines you want to customize.
-    # Text and image fields accept {place_name}, {place_icon}, and
-    # {creator_name}. A field that expands an empty placeholder is left out,
-    # and a "" title shows the app name.
-    # title, state, and the images fields may be "" to hide them.
+    # English defaults. Uncomment only the lines you want to customize. Text and
+    # image fields accept {place_name}, {place_icon}, and {creator_name}. A
+    # field that expands an empty placeholder is left out, and a "" title shows
+    # the app name. `title`, `state`, and the images fields may be "" to hide
+    # them.
+    # application_id: 123456789012345678
     # text:
     #   browsing: Browsing experiences
     #   joining: Joining an experience
@@ -142,15 +210,11 @@ integrations:
     #   state: "by {creator_name}"
     #   unknown_place: Unknown experience
     #   title: Roblox
-    # Images take an https:// URL, or an asset key uploaded to application_id.
-    # large: "" hides both images; the small image needs a large one.
     # images:
     #   large: "{place_icon}"
     #   large_text: "{place_name}"
     #   small: roblox_small
     #   small_text: Roblox
-    # Advanced: overrides the application bundled by the package maintainer.
-    # application_id: 123456789012345678
 
 window:
   # Integer (default: 1280): initial window width in logical desktop units.
@@ -160,15 +224,24 @@ window:
   # String (default: Roblox): window title.
   title: Roblox
   # Boolean (default: false): render at physical display-pixel density instead
-  # of the logical desktop resolution. Enable only for sharper high-DPI output.
+  # of the logical desktop resolution. Enable only for sharper high-DPI output;
+  # it costs fill rate and is not recommended on integrated graphics.
   high_dpi: false
+
+display:
+  # Boolean (default: false): enable exclusive fullscreen.
+  #   true  - bypass the compositor (X11) and use a native display mode (for
+  #           example 1024x768). May reduce input latency but can cause
+  #           display-mode switching issues on some systems.
+  #   false - borderless fullscreen (default, safer, better compatibility).
+  exclusive_fullscreen: false
 
 network:
   # Boolean (default: false): follow the host HTTP/SOCKS5 proxy and
-  # automatically use its current port. Do not combine with a fixed proxy.
+  # automatically use its current port. Do not combine with a fixed proxy below.
   use_system_proxy: false
-  # Optional fixed HTTP proxy. Uncomment both values together. The host must
-  # not contain a scheme such as http://.
+  # Optional fixed HTTP proxy. Uncomment both values together. The host must not
+  # contain a scheme such as http://.
   # String (optional, default: disabled): proxy host name or IP address.
   # proxy_host: 127.0.0.1
   # Integer (optional, default: disabled): proxy TCP port from 1 to 65535.
@@ -185,10 +258,11 @@ updates:
   automatic: true
   # String (default: apk-pure): direct x86_64 APK provider selection. Both
   # accepted values resolve the provider chain, which currently starts with
-  # APKPure. Supported values: auto, apk-pure.
+  # APKPure. Supported: auto, apk-pure.
   source: apk-pure
-  # Reserved for desktop update integrations. `mocktail_updater` itself never
-  # launches another process after changing the active payload.
+  # Boolean (default: false): reserved for desktop update integrations.
+  # `mocktail_updater` never launches another process after changing the active
+  # payload.
   launch_after_update: false
 )yaml";
 

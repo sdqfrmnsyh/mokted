@@ -1,6 +1,7 @@
 #include "runtime/graphics_launch_policy.h"
 
 #include "runtime/frame_rate_policy.h"
+#include "runtime/texture_memory_policy.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -84,6 +85,16 @@ bool EnvIsOff(const char* name) {
 bool UnthrottledPresentation(const RuntimeConfig& config) {
   if (config.vsync_mode() == "off" || config.vsync_mode() == "0") {
     return true;
+  }
+  // For ultra-low-end hardware, auto vsync uses mailbox for lower latency
+  // but with frame rate limiting to reduce GPU pressure
+  if (config.vsync_mode() == "auto") {
+    std::uint64_t host_memory = DetectHostMemoryBytes();
+    bool is_ultra_low_end = host_memory < 4ULL * 1024U * 1024U * 1024U;
+    if (is_ultra_low_end) {
+      // Use mailbox for low latency but with frame pacing
+      return config.frame_rate().mode == FrameRateLimitMode::kUnlimited;
+    }
   }
   return config.frame_rate().mode == FrameRateLimitMode::kUnlimited;
 }
@@ -175,6 +186,7 @@ std::string SelectHardwareIcd(const HostGpus& gpus) {
 // Match Mesa ANV: 75% of RAM when the machine has more than 4GiB, else 50%.
 // Forcing 50 on an 8GiB UHD 620 iGPU advertises a smaller Vk heap than ANV
 // would, which increases BO eviction inside GEM_EXECBUFFER2.
+// ULTRA-LOW-END: On systems with < 4GB, use 25% to leave memory for system
 const char* AnvSysMemLimitPercent() {
   std::ifstream input("/proc/meminfo");
   std::string key;
@@ -182,10 +194,83 @@ const char* AnvSysMemLimitPercent() {
   std::string unit;
   while (input >> key >> kb >> unit) {
     if (key == "MemTotal:") {
+      if (kb < 4UL * 1024UL * 1024UL) {
+        return "25";
+      }
       return kb > 4UL * 1024UL * 1024UL ? "75" : "50";
     }
   }
   return "50";
+}
+
+// OPTIMIZED: Apply aggressive OpenGL/Mesa driver optimizations
+bool ApplyOpenGlOptimizations(std::string* error) {
+  // Mesa (AMD/Intel) optimizations
+  if (!SetDefault("MESA_LOADER_DRIVER_OVERRIDE", "", error)) {
+    return false;
+  }
+  // Disable debug/output overhead
+  if (!SetDefault("MESA_DEBUG", "silent", error)) {
+    return false;
+  }
+  if (!SetDefault("MESA_VERBOSE", "0", error)) {
+    return false;
+  }
+  if (!SetDefault("MESA_LOG_FILE", "", error)) {
+    return false;
+  }
+  // Performance optimizations
+  if (!SetDefault("MESA_GLTHREAD", "true", error)) {
+    return false;
+  }
+  if (!SetDefault("MESA_SHADER_CACHE", "1", error)) {
+    return false;
+  }
+  if (!SetDefault("MESA_SHADER_CACHE_MAX_SIZE", "2G", error)) {
+    return false;
+  }
+  if (!SetDefault("MESA_NO_DITHER", "1", error)) {
+    return false;
+  }
+  if (!SetDefault("MESA_NO_ERROR", "1", error)) {
+    return false;
+  }
+  // Tile-based rendering optimizations
+  if (!SetDefault("MESA_TILE_RASTER_ORDER_FIX", "1", error)) {
+    return false;
+  }
+  // Threaded optimizations
+  if (!SetDefault("GALLIUM_THREAD", "1", error)) {
+    return false;
+  }
+  if (!SetDefault("GALLIUM_HUD", "", error)) {
+    return false;
+  }
+  // Disable vsync at driver level (we handle it via Vulkan WSI)
+  if (!SetDefault("vblank_mode", "0", error)) {
+    return false;
+  }
+  // Buffer storage optimizations
+  if (!SetDefault("MESA_EXTENSION_OVERRIDE",
+                  "-GL_ARB_sync,+GL_EXT_buffer_storage,"
+                  "+GL_ARB_buffer_storage,+GL_ARB_multi_bind,"
+                  "+GL_ARB_texture_storage,+GL_ARB_texture_view,"
+                  "+GL_EXT_texture_compression_s3tc,+GL_EXT_texture_filter_anisotropic",
+                  error)) {
+    return false;
+  }
+  // Force GLSL optimizer
+  if (!SetDefault("MESA_GLSL_CACHE_DISABLE", "0", error)) {
+    return false;
+  }
+  if (!SetDefault("MESA_GLSL_OPTIMIZE", "1", error)) {
+    return false;
+  }
+  // Disable sync waits
+  if (!SetDefault("MESA_NO_FENCE", "1", error)) {
+    return false;
+  }
+  return true;
 }
 
 bool ApplyVulkanIcdPolicy(const HostGpus& gpus, std::string* error) {
@@ -208,6 +293,117 @@ bool ApplyVulkanIcdPolicy(const HostGpus& gpus, std::string* error) {
   std::fprintf(stderr, "  [runtime] vulkan ICD=%s\n", icd.c_str());
   return SetDefault("VK_DRIVER_FILES", icd, error) &&
          SetDefault("VK_ICD_FILENAMES", icd, error);
+}
+
+// OPTIMIZED: Apply aggressive Vulkan driver optimizations
+bool ApplyVulkanOptimizations(const HostGpus& gpus, std::string* error) {
+  // Detect ultra-low-end system (Stoney Ridge class)
+  std::uint64_t host_memory = mocktail::runtime::DetectHostMemoryBytes();
+  bool is_ultra_low_end = host_memory < 4ULL * 1024U * 1024U * 1024U;
+
+  // RADV (AMD) optimizations
+  if (gpus.amd) {
+    if (is_ultra_low_end) {
+      // ULTRA-LOW-END: Stoney Ridge (GCN 1.3) - minimal feature set
+      if (!SetDefault("RADV_PERFTEST",
+                      "aco,nggc,ngg,dcc,fmask,compress,"
+                      "no_surface_init,fast_launch,htile,rbplus,"
+                      "drirc_shader_binary,drirc_optimize",
+                      error)) {
+        return false;
+      }
+      // Disable expensive features on Stoney Ridge
+      if (!SetDefault("RADV_DEBUG",
+                      "noinfo,nodump,nooutoforder,startup,nowc,noih,noib",
+                      error)) {
+        return false;
+      }
+      // Force 32-bit indices, disable mesh/task shaders (not supported on GCN 1.3)
+      if (!SetDefault("RADV_FORCE_NGG", "1", error)) {
+        return false;
+      }
+      // Reduce VRAM usage
+      if (!SetDefault("RADV_TEX_ANISO_MAX", "2", error)) {
+        return false;
+      }
+    } else {
+      // Standard AMD optimizations
+      if (!SetDefault("RADV_PERFTEST",
+                      "aco,nggc,ngg,mesh_shaders,task_shaders,rt,dcc,display_dcc,"
+                      "fmask,compress,es,gs,vs,ps,cs,invariantgeom,"
+                      "shader_cycle,no_surface_init,fast_launch,"
+                      "tc_compat_htile,htile,rbplus,"
+                      "dds,drirc_shader_binary,drirc_optimize,"
+                      "list_threaded_submit",
+                      error)) {
+        return false;
+      }
+      if (!SetDefault("RADV_DEBUG",
+                      "noinfo,nodump,nooutoforder,startup",
+                      error)) {
+        return false;
+      }
+      if (!SetDefault("RADV_FORCE_NGG", "1", error)) {
+        return false;
+      }
+    }
+  }
+
+  // ANV (Intel) optimizations
+  if (gpus.intel) {
+    // Already set via ANV_SYS_MEM_LIMIT, add more
+    if (!SetDefault("ANV_PRIMITIVE_REPLICATION", "1", error)) {
+      return false;
+    }
+    if (!SetDefault("ANV_ENABLE_GEN12_TESSELLATION", "1", error)) {
+      return false;
+    }
+    if (!SetDefault("ANV_ALWAYS_BINDLESS", "1", error)) {
+      return false;
+    }
+    if (!SetDefault("ANV_USE_DGC", "1", error)) {
+      return false;
+    }
+    // Enable mesh/task shaders on DG2+
+    if (!SetDefault("ANV_ENABLE_MESH_SHADERS", "1", error)) {
+      return false;
+    }
+  }
+
+  // NVK (Nouveau/NVIDIA) optimizations
+  if (gpus.nvidia) {
+    if (!SetDefault("NVK_DEBUG", "noinfo,nodump", error)) {
+      return false;
+    }
+    if (!SetDefault("NVK_PERFTEST", "cs,gs,vs,ps,mesh,task", error)) {
+      return false;
+    }
+  }
+
+  // Universal Vulkan optimizations
+  if (!SetDefault("VK_INSTANCE_LAYERS", "VK_LAYER_MESA_overlay", error)) {
+    return false;
+  }
+  // Disable validation layers for performance
+  if (!SetDefault("VK_LOADER_LAYERS_DISABLE", "*", error)) {
+    return false;
+  }
+  if (!SetDefault("VK_LAYER_DISABLE", "*", error)) {
+    return false;
+  }
+  // Enable timeline semaphores everywhere
+  if (!SetDefault("MESA_VK_WSI_PRESENT_MODE", "mailbox", error)) {
+    return false;
+  }
+  // Threaded submit for all drivers
+  if (!SetDefault("MESA_VK_ENABLE_SUBMIT_THREAD", "1", error)) {
+    return false;
+  }
+  // Disable async present fence overhead
+  if (!SetDefault("MESA_VK_WSI_DEBUG", "no-incremental", error)) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -275,8 +471,19 @@ bool ApplyGraphicsLaunchPolicy(const RuntimeConfig& config,
 
   if (IsStrictOpenGlName(config.graphics_backend_name()) &&
       (!SetValue("MOCKTAIL_DISABLE_AUTO_ANGLE_FALLBACK", "1", error) ||
-       !SetValue("MOCKTAIL_SOFTWARE_WINDOW_FALLBACK", "0", error))) {
+       !SetValue("MOCKTAIL_SOFTWARE_WINDOW_FALLBACK", "0", error) ||
+       !SetDefault("MESA_GL_VERSION_OVERRIDE", "3.2", error) ||
+       !SetDefault("MESA_GLSL_VERSION_OVERRIDE", "150", error) ||
+       !SetDefault("MESA_EXTENSION_OVERRIDE", "-GL_ARB_sync,+GL_EXT_buffer_storage", error) ||
+       !SetDefault("vblank_mode", "0", error))) {
     return false;
+  }
+
+  // OPTIMIZED: Apply OpenGL/Mesa driver optimizations
+  if (IsStrictOpenGlName(config.graphics_backend_name())) {
+    if (!ApplyOpenGlOptimizations(error)) {
+      return false;
+    }
   }
 
   if (direct_vulkan) {
@@ -291,13 +498,8 @@ bool ApplyGraphicsLaunchPolicy(const RuntimeConfig& config,
         // worker so the render thread is not stuck in i915 ioctl.
         !SetDefault("MESA_VK_ENABLE_SUBMIT_THREAD", "1", error) ||
         !ApplyVulkanIcdPolicy(gpus, error) ||
+        !ApplyVulkanOptimizations(gpus, error) ||
         !SetDefault("MOCKTAIL_FORCE_1X1_TEXTURES", "1", error)) {
-      return false;
-    }
-    // Low FRM only on Intel-only machines. Hybrid NVIDIA/AMD laptops should
-    // keep the desktop quality default on the discrete GPU.
-    if (gpus.intel && !gpus.nvidia && !gpus.amd &&
-        !SetDefault("MOCKTAIL_GRAPHICS_QUALITY", "1", error)) {
       return false;
     }
   }

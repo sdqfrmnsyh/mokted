@@ -195,7 +195,7 @@ class RuntimeConfig {
   std::vector<std::string> unsafe_detached_thread_overrides_;
   bool exclusive_fullscreen_ = false;
   bool exclusive_fullscreen_valid_ = true;
-  // "auto" honours GPU detection, "native" forces emulation off.
+  // "auto" honours GPU detection, "native" forces emulation off, "off" disables ETC2 entirely.
   std::string etc2_emulation_mode_ = "auto";
   bool etc2_emulation_valid_ = true;
 };
